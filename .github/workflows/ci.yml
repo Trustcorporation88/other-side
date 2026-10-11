@@ -44,3 +44,10 @@ jobs:
       - name: Android debug build
         working-directory: android
         run: ./gradlew :app:assembleDebug --no-daemon --no-parallel --max-workers=2 --console=plain -PreactNativeArchitectures=arm64-v8a -PnewArchEnabled=false
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: other-side-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
