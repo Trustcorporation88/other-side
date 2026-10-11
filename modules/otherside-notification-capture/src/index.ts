@@ -1,4 +1,4 @@
-import { EventEmitter, requireOptionalNativeModule } from 'expo-modules-core';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 export type CapturedNotification = {
   id: string;
@@ -15,6 +15,10 @@ type NativeEvents = {
 };
 
 type NativeModule = {
+  addListener: (
+    eventName: 'onNotificationCaptured',
+    listener: NativeEvents['onNotificationCaptured']
+  ) => { remove: () => void };
   isListenerEnabled: () => boolean;
   openNotificationSettings: () => void;
   getCapturedNotifications: () => CapturedNotification[];
@@ -22,33 +26,62 @@ type NativeModule = {
   clearCapturedNotifications: () => void;
 };
 
-const nativeModule = requireOptionalNativeModule<NativeModule>('OtherSideNotificationCapture');
-const emitter = nativeModule ? new EventEmitter<NativeEvents>(nativeModule as never) : null;
+const nativeModule = (() => {
+  try {
+    return requireOptionalNativeModule<NativeModule>('OtherSideNotificationCapture');
+  } catch (_error) {
+    return null;
+  }
+})();
 
 export const isNativeAvailable = nativeModule !== null;
 
 export function isListenerEnabled(): boolean {
-  return nativeModule?.isListenerEnabled() ?? false;
+  try {
+    return nativeModule?.isListenerEnabled() ?? false;
+  } catch (_error) {
+    return false;
+  }
 }
 
 export function openNotificationSettings(): void {
-  nativeModule?.openNotificationSettings();
+  try {
+    nativeModule?.openNotificationSettings();
+  } catch (_error) {
+    // A missing native activity must not block the application shell.
+  }
 }
 
 export function getCapturedNotifications(): CapturedNotification[] {
-  return nativeModule?.getCapturedNotifications() ?? [];
+  try {
+    return nativeModule?.getCapturedNotifications() ?? [];
+  } catch (_error) {
+    return [];
+  }
 }
 
 export function deleteCapturedNotification(id: string): void {
-  nativeModule?.deleteCapturedNotification(id);
+  try {
+    nativeModule?.deleteCapturedNotification(id);
+  } catch (_error) {
+    // Deletion is best effort and never blocks the application shell.
+  }
 }
 
 export function clearCapturedNotifications(): void {
-  nativeModule?.clearCapturedNotifications();
+  try {
+    nativeModule?.clearCapturedNotifications();
+  } catch (_error) {
+    // Clearing is best effort and never blocks the application shell.
+  }
 }
 
 export function addNotificationListener(
   listener: (notification: CapturedNotification) => void
 ) {
-  return emitter?.addListener('onNotificationCaptured', listener) ?? { remove: () => undefined };
+  try {
+    return nativeModule?.addListener('onNotificationCaptured', listener) ?? { remove: () => undefined };
+  } catch (_error) {
+    return { remove: () => undefined };
+  }
 }
