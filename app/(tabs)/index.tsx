@@ -11,6 +11,9 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import { openNotificationSettings } from '@otherside/notification-capture';
+import { useNotificationCapture } from '@/hooks/useNotificationCapture';
+
 const colors = {
   navy: '#071527',
   navySoft: '#0D2038',
@@ -23,14 +26,32 @@ const colors = {
   amber: '#F1B65B',
 };
 
+function formatNotificationTime(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function MessagesScreen() {
   const [query, setQuery] = useState('');
+  const { notifications, listenerEnabled, nativeAvailable, refresh } = useNotificationCapture();
+  const filteredNotifications = notifications.filter((notification) => {
+    const searchableText = `${notification.conversation} ${notification.sender} ${notification.message}`.toLowerCase();
+    return searchableText.includes(query.trim().toLowerCase());
+  });
 
   function explainNativeAccess() {
-    Alert.alert(
-      'Integração em preparação',
-      'O módulo nativo que abrirá o acesso às notificações será conectado na próxima etapa. Nenhuma mensagem é capturada nesta versão.'
-    );
+    if (!nativeAvailable) {
+      Alert.alert(
+        'Build Android necessário',
+        'A captura não funciona no Expo Go. Instale o APK de teste do OtherSide para ativar o acesso às notificações.'
+      );
+      return;
+    }
+
+    openNotificationSettings();
+    setTimeout(refresh, 700);
   }
 
   return (
@@ -50,20 +71,36 @@ export default function MessagesScreen() {
 
         <View style={styles.statusPanel}>
           <View style={styles.statusRow}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusLabel}>CAPTURA INATIVA</Text>
+            <View style={[styles.statusDot, listenerEnabled && styles.statusDotActive]} />
+            <Text style={[styles.statusLabel, listenerEnabled && styles.activeLabel]}>
+              {!nativeAvailable ? 'APK ANDROID NECESSÁRIO' : listenerEnabled ? 'CAPTURA ATIVA' : 'CAPTURA INATIVA'}
+            </Text>
           </View>
-          <Text style={styles.statusTitle}>O Android ainda não autorizou o acesso.</Text>
-          <Text style={styles.statusDescription}>
-            A captura será local e começará somente depois da sua autorização explícita.
+          <Text style={styles.statusTitle}>
+            {!nativeAvailable
+              ? 'A captura será ativada no APK do aparelho.'
+              : listenerEnabled
+                ? 'O OtherSide está preservando novas notificações.'
+                : 'O Android ainda não autorizou o acesso.'}
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={explainNativeAccess}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-            <Text style={styles.primaryButtonText}>Configurar acesso</Text>
-            <Text style={styles.primaryButtonArrow}>↗</Text>
-          </Pressable>
+          <Text style={styles.statusDescription}>
+            {!nativeAvailable
+              ? 'O Expo Go não incorpora o serviço nativo. O histórico será lido pelo build Android próprio.'
+              : listenerEnabled
+                ? 'Os registros ficam somente neste aparelho e podem ser apagados pelos ajustes.'
+                : 'A captura será local e começará somente depois da sua autorização explícita.'}
+          </Text>
+          {!listenerEnabled && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={explainNativeAccess}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+              <Text style={styles.primaryButtonText}>
+                {nativeAvailable ? 'Configurar acesso' : 'Como instalar o APK'}
+              </Text>
+              <Text style={styles.primaryButtonArrow}>↗</Text>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.sectionHeader}>
@@ -71,7 +108,7 @@ export default function MessagesScreen() {
             <Text style={styles.sectionEyebrow}>HISTÓRICO LOCAL</Text>
             <Text style={styles.sectionTitle}>Mensagens preservadas</Text>
           </View>
-          <Text style={styles.count}>0</Text>
+          <Text style={styles.count}>{notifications.length}</Text>
         </View>
 
         <View style={styles.searchBox}>
@@ -87,17 +124,38 @@ export default function MessagesScreen() {
           />
         </View>
 
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <View style={styles.emptyIconLine} />
-            <View style={[styles.emptyIconLine, styles.emptyIconLineShort]} />
+        {filteredNotifications.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <View style={styles.emptyIconLine} />
+              <View style={[styles.emptyIconLine, styles.emptyIconLineShort]} />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {query.length > 0 ? 'Nenhum resultado' : 'Ainda não há mensagens'}
+            </Text>
+            <Text style={styles.emptyDescription}>
+              {query.length > 0
+                ? `Nada corresponde a “${query}”.`
+                : 'Quando uma mensagem aparecer em uma notificação autorizada, ela ficará disponível aqui, somente neste aparelho.'}
+            </Text>
           </View>
-          <Text style={styles.emptyTitle}>Ainda não há mensagens</Text>
-          <Text style={styles.emptyDescription}>
-            Quando uma mensagem aparecer em uma notificação autorizada, ela ficará disponível aqui, somente neste aparelho.
-          </Text>
-          {query.length > 0 && <Text style={styles.emptyHint}>Nenhum resultado para “{query}”.</Text>}
-        </View>
+        ) : (
+          <View style={styles.messageList}>
+            {filteredNotifications.map((notification) => (
+              <View key={notification.id} style={styles.messageCard}>
+                <View style={styles.messageHeader}>
+                  <View style={styles.messageCopy}>
+                    <Text style={styles.messageConversation}>{notification.conversation}</Text>
+                    <Text style={styles.messageSender}>{notification.sender}</Text>
+                  </View>
+                  <Text style={styles.messageTime}>{formatNotificationTime(notification.receivedAt)}</Text>
+                </View>
+                <Text style={styles.messageBody}>{notification.message}</Text>
+                <Text style={styles.messageMeta}>WHATSAPP · PRESERVADA NO APARELHO</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.privacyNote}>
           <Text style={styles.privacyLock}>◆</Text>
@@ -180,11 +238,17 @@ const styles = StyleSheet.create({
     height: 9,
     width: 9,
   },
+  statusDotActive: {
+    backgroundColor: '#67E3A3',
+  },
   statusLabel: {
     color: colors.amber,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.5,
+  },
+  activeLabel: {
+    color: '#67E3A3',
   },
   statusTitle: {
     color: colors.white,
@@ -319,6 +383,52 @@ const styles = StyleSheet.create({
     color: colors.blueSoft,
     fontSize: 12,
     marginTop: 13,
+  },
+  messageList: {
+    gap: 12,
+  },
+  messageCard: {
+    backgroundColor: colors.navySoft,
+    borderColor: '#1D4166',
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 16,
+  },
+  messageHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  messageCopy: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  messageConversation: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  messageSender: {
+    color: colors.blueSoft,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  messageTime: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  messageBody: {
+    color: colors.white,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 15,
+  },
+  messageMeta: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    marginTop: 15,
   },
   privacyNote: {
     alignItems: 'flex-start',
