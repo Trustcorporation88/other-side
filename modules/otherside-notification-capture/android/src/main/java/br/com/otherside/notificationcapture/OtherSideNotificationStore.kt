@@ -87,7 +87,7 @@ internal object OtherSideNotificationStore {
       if (record.optString("id") != id) updated.put(record)
     }
     writeJson(context, updated)
-  })
+  }
 
   fun clear(context: Context) = synchronized(lock) {
     writeJson(context, JSONArray())

@@ -51,7 +51,7 @@ class OtherSideNotificationCaptureModule : Module() {
     }
   }
 
-  fun emitNotification(notification: CapturedNotification) {
+  internal fun emitNotification(notification: CapturedNotification) {
     sendEvent("onNotificationCaptured", notification.toMap())
   }
 
