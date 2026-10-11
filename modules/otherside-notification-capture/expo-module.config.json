@@ -1,0 +1,8 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": [
+      "br.com.otherside.notificationcapture.OtherSideNotificationCaptureModule"
+    ]
+  }
+}
