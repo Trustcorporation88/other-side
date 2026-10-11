@@ -34,7 +34,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "./plugins/with-notification-listener"
     ],
     "experiments": {
       "typedRoutes": true

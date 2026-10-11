@@ -26,3 +26,19 @@ jobs:
 
       - name: Expo web export
         run: npx expo export --platform web
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android debug build
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --no-daemon

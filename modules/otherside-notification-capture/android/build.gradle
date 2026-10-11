@@ -1,0 +1,21 @@
+apply plugin: 'com.android.library'
+
+group = 'br.com.otherside.notificationcapture'
+version = '0.1.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+
+android {
+  namespace "br.com.otherside.notificationcapture"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    minSdkVersion 24
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
