@@ -1,6 +1,9 @@
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import { openNotificationSettings } from '@otherside/notification-capture';
+import { useNotificationCapture } from '@/hooks/useNotificationCapture';
+
 const colors = {
   navy: '#071527',
   navySoft: '#0D2038',
@@ -13,11 +16,19 @@ const colors = {
 };
 
 export default function SettingsScreen() {
+  const { listenerEnabled, nativeAvailable, refresh } = useNotificationCapture();
+
   function explainNativeAccess() {
-    Alert.alert(
-      'Integração em preparação',
-      'Na próxima etapa, este botão abrirá diretamente os ajustes de Acesso às notificações do Android.'
-    );
+    if (!nativeAvailable) {
+      Alert.alert(
+        'Build Android necessário',
+        'A captura não funciona no Expo Go. Instale o APK de teste do OtherSide para ativar o acesso às notificações.'
+      );
+      return;
+    }
+
+    openNotificationSettings();
+    setTimeout(refresh, 700);
   }
 
   return (
@@ -38,18 +49,26 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.cardHeaderCopy}>
               <Text style={styles.cardTitle}>Acesso às notificações</Text>
-              <Text style={styles.cardSubtitle}>Ainda não autorizado</Text>
+              <Text style={[styles.cardSubtitle, listenerEnabled && styles.cardSubtitleActive]}>
+                {!nativeAvailable ? 'APK Android necessário' : listenerEnabled ? 'Captura ativa' : 'Ainda não autorizado'}
+              </Text>
             </View>
-            <View style={styles.warningDot} />
+            <View style={[styles.warningDot, listenerEnabled && styles.activeDot]} />
           </View>
           <Text style={styles.cardDescription}>
-            O Android precisa autorizar a captura antes do primeiro registro. O OtherSide observa apenas os pacotes do WhatsApp definidos no app.
+            {!nativeAvailable
+              ? 'O Expo Go não incorpora o serviço nativo. O APK próprio ativará esta integração no aparelho.'
+              : listenerEnabled
+                ? 'O OtherSide está observando notificações do WhatsApp e salvando os registros localmente.'
+                : 'O Android precisa autorizar a captura antes do primeiro registro. O OtherSide observa apenas os pacotes do WhatsApp definidos no app.'}
           </Text>
           <Pressable
             accessibilityRole="button"
             onPress={explainNativeAccess}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-            <Text style={styles.secondaryButtonText}>Abrir ajustes do Android</Text>
+            <Text style={styles.secondaryButtonText}>
+              {nativeAvailable ? 'Abrir ajustes do Android' : 'Como instalar o APK'}
+            </Text>
             <Text style={styles.secondaryButtonArrow}>↗</Text>
           </Pressable>
         </View>
@@ -74,7 +93,9 @@ export default function SettingsScreen() {
           <LimitItem text="Apagar no WhatsApp não apaga automaticamente a cópia local." />
         </View>
 
-        <Text style={styles.version}>OtherSide 1.0.0 · integração nativa pendente</Text>
+        <Text style={styles.version}>
+          OtherSide 1.0.0 · {nativeAvailable ? 'módulo nativo conectado' : 'aguardando APK Android'}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -167,11 +188,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  cardSubtitleActive: {
+    color: '#67E3A3',
+  },
   warningDot: {
     backgroundColor: colors.amber,
     borderRadius: 5,
     height: 9,
     width: 9,
+  },
+  activeDot: {
+    backgroundColor: '#67E3A3',
   },
   cardDescription: {
     color: colors.muted,
