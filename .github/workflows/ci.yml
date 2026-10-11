@@ -9,6 +9,7 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,4 +43,4 @@ jobs:
 
       - name: Android debug build
         working-directory: android
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug --no-daemon --no-parallel --max-workers=2 --console=plain -PreactNativeArchitectures=arm64-v8a -PnewArchEnabled=false
