@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -66,6 +66,16 @@ export default function AudiosScreen() {
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Mais recentes no topo, pela data real do áudio (cai para a data de preservação se faltar).
+  const sortedAudios = useMemo(
+    () =>
+      [...audios].sort(
+        (a, b) =>
+          (b.originalModifiedAt || b.preservedAt) - (a.originalModifiedAt || a.preservedAt),
+      ),
+    [audios],
+  );
 
   useEffect(() => {
     if (status.didJustFinish) {
@@ -194,7 +204,7 @@ export default function AudiosScreen() {
           </View>
         ) : (
           <View style={styles.list}>
-            {audios.map((audio) => {
+            {sortedAudios.map((audio) => {
               const isActive = activeId === audio.id;
               const isPlaying = isActive && status.playing;
               return (
