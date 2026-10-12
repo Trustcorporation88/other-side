@@ -67,15 +67,44 @@ export default function AudiosScreen() {
   const status = useAudioPlayerStatus(player);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // Mais recentes no topo, pela data real do áudio (cai para a data de preservação se faltar).
-  const sortedAudios = useMemo(
-    () =>
-      [...audios].sort(
-        (a, b) =>
-          (b.originalModifiedAt || b.preservedAt) - (a.originalModifiedAt || a.preservedAt),
-      ),
-    [audios],
-  );
+  // Agrupado por dia, com os dias e os áudios mais recentes no topo.
+  const groupedAudios = useMemo(() => {
+    const startOfDay = (ts: number) => {
+      const date = new Date(ts);
+      date.setHours(0, 0, 0, 0);
+      return date.getTime();
+    };
+    const momentOf = (audio: PreservedAudio) => audio.originalModifiedAt || audio.preservedAt;
+    const today = startOfDay(Date.now());
+    const oneDay = 24 * 60 * 60 * 1000;
+    const labelFor = (dayStart: number) => {
+      if (dayStart === today) return 'Hoje';
+      if (dayStart === today - oneDay) return 'Ontem';
+      const date = new Date(dayStart);
+      const sameYear = date.getFullYear() === new Date().getFullYear();
+      return date.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        ...(sameYear ? {} : { year: 'numeric' }),
+      });
+    };
+
+    const byDay = new Map<number, PreservedAudio[]>();
+    for (const audio of audios) {
+      const key = startOfDay(momentOf(audio));
+      const bucket = byDay.get(key);
+      if (bucket) bucket.push(audio);
+      else byDay.set(key, [audio]);
+    }
+
+    return [...byDay.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([dayStart, items]) => ({
+        key: dayStart,
+        label: labelFor(dayStart),
+        items: items.sort((a, b) => momentOf(b) - momentOf(a)),
+      }));
+  }, [audios]);
 
   useEffect(() => {
     if (status.didJustFinish) {
@@ -204,46 +233,51 @@ export default function AudiosScreen() {
           </View>
         ) : (
           <View style={styles.list}>
-            {sortedAudios.map((audio) => {
-              const isActive = activeId === audio.id;
-              const isPlaying = isActive && status.playing;
-              return (
-                <View key={audio.id} style={[styles.card, isActive && styles.cardActive]}>
-                  <View style={styles.cardRow}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={isPlaying ? 'Pausar áudio' : 'Reproduzir áudio'}
-                      onPress={() => togglePlay(audio)}
-                      style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}>
-                      <Text style={styles.playGlyph}>{isPlaying ? '❚❚' : '▶'}</Text>
-                    </Pressable>
-                    <View style={styles.cardCopy}>
-                      <Text style={styles.cardTitle}>{originLabel(audio.origin)}</Text>
-                      <Text style={styles.cardMeta}>
-                        {formatMoment(audio.originalModifiedAt || audio.preservedAt)} ·{' '}
-                        {formatSize(audio.sizeBytes)}
+            {groupedAudios.map((group) => (
+              <View key={group.key} style={styles.dayGroup}>
+                <Text style={styles.dayHeader}>{group.label}</Text>
+                {group.items.map((audio) => {
+                  const isActive = activeId === audio.id;
+                  const isPlaying = isActive && status.playing;
+                  return (
+                    <View key={audio.id} style={[styles.card, isActive && styles.cardActive]}>
+                      <View style={styles.cardRow}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={isPlaying ? 'Pausar áudio' : 'Reproduzir áudio'}
+                          onPress={() => togglePlay(audio)}
+                          style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}>
+                          <Text style={styles.playGlyph}>{isPlaying ? '❚❚' : '▶'}</Text>
+                        </Pressable>
+                        <View style={styles.cardCopy}>
+                          <Text style={styles.cardTitle}>{originLabel(audio.origin)}</Text>
+                          <Text style={styles.cardMeta}>
+                            {formatMoment(audio.originalModifiedAt || audio.preservedAt)} ·{' '}
+                            {formatSize(audio.sizeBytes)}
+                          </Text>
+                          {isActive && (
+                            <Text style={styles.cardProgress}>
+                              {formatDuration(status.currentTime)}
+                              {status.duration > 0 ? ` / ${formatDuration(status.duration)}` : ''}
+                            </Text>
+                          )}
+                        </View>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Apagar áudio"
+                          onPress={() => confirmDelete(audio)}
+                          style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}>
+                          <Text style={styles.deleteGlyph}>✕</Text>
+                        </Pressable>
+                      </View>
+                      <Text style={styles.cardFile} numberOfLines={1}>
+                        {audio.fileName}
                       </Text>
-                      {isActive && (
-                        <Text style={styles.cardProgress}>
-                          {formatDuration(status.currentTime)}
-                          {status.duration > 0 ? ` / ${formatDuration(status.duration)}` : ''}
-                        </Text>
-                      )}
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Apagar áudio"
-                      onPress={() => confirmDelete(audio)}
-                      style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}>
-                      <Text style={styles.deleteGlyph}>✕</Text>
-                    </Pressable>
-                  </View>
-                  <Text style={styles.cardFile} numberOfLines={1}>
-                    {audio.fileName}
-                  </Text>
-                </View>
-              );
-            })}
+                  );
+                })}
+              </View>
+            ))}
           </View>
         )}
 
@@ -462,7 +496,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   list: {
+    gap: 24,
+  },
+  dayGroup: {
     gap: 12,
+  },
+  dayHeader: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    marginBottom: 2,
+    textTransform: 'uppercase',
   },
   card: {
     backgroundColor: colors.navySoft,
