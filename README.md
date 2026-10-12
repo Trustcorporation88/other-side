@@ -7,6 +7,7 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 - Base Expo Router em TypeScript criada.
 - Primeira interface implementada com histórico vazio, status da captura e aba de ajustes.
 - Módulo Kotlin conectado ao histórico local e ao acesso às notificações.
+- Preservação de notas de voz do WhatsApp por observação da pasta de mídia, com aba de reprodução.
 - Validação em aparelho físico ainda necessária.
 
 ## Identidade
@@ -17,7 +18,7 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 
 ## Limites do produto
 
-O aplicativo não lê o banco privado do WhatsApp e não recupera mensagens antigas. Ele poderá preservar somente o conteúdo que aparecer em uma notificação depois que a pessoa conceder acesso ao serviço de notificações do Android.
+O aplicativo não lê o banco privado do WhatsApp e não recupera mensagens antigas. O texto das mensagens é preservado somente a partir das notificações que chegarem depois de a pessoa conceder acesso ao serviço de notificações do Android. As notas de voz são preservadas a partir da pasta de mídia do WhatsApp, quando a pessoa concede a permissão de acesso a todos os arquivos (ver "Preservação de áudio").
 
 ## Desenvolvimento
 
@@ -36,7 +37,17 @@ O CI agora usa `assembleRelease` para incorporar o JavaScript e desativar o supo
 
 O listener usa a chave estável da notificação do Android junto ao conteúdo para reconhecer uma reentrega sem usar o horário, que pode mudar quando uma notificação antiga reaparece. Ao carregar o histórico legado, cópias exatamente iguais na mesma conversa são consolidadas. Notificações novas com chaves Android diferentes continuam sendo eventos independentes, mesmo que o texto seja igual.
 
-O APK 1.0.3 inclui um diagnóstico local e transitório de anexos de áudio nas notificações. Ele verifica se o WhatsApp expôs uma URI de mídia e se o OtherSide consegue abri-la no instante da notificação. Não lê, copia, reproduz nem envia o arquivo. Um resultado acessível indica que será tecnicamente viável implementar a cópia local em uma etapa separada; não significa que o áudio já foi preservado.
+O APK 1.0.3 incluiu um diagnóstico local e transitório de anexos de áudio nas notificações. Ele verificava se o WhatsApp expôs uma URI de mídia e se o OtherSide conseguia abri-la no instante da notificação. O diagnóstico confirmou que a notificação de nota de voz do WhatsApp não carrega o arquivo de áudio (`not_provided`): a notificação traz apenas texto. Portanto, não é possível recuperar o áudio pela notificação.
+
+## Preservação de áudio
+
+Como a notificação não entrega o arquivo, o OtherSide preserva as notas de voz observando a pasta de mídia do WhatsApp no disco e copiando o arquivo para o armazenamento privado do app assim que ele chega — antes que o WhatsApp o apague. Nenhum áudio sai do aparelho.
+
+- `WhatsAppAudioPreserver` observa `Android/media/com.whatsapp/.../WhatsApp Voice Notes` (e `WhatsApp Audio`, além das variantes do WhatsApp Business e dos caminhos legados) com um `FileObserver` recursivo. A cada retorno do app ao primeiro plano também é feita uma varredura de recuperação dos arquivos recentes, pois o inotify pode perder eventos em alguns aparelhos.
+- A aba **Áudios** lista as cópias preservadas e reproduz cada uma com `expo-audio`.
+- Requer **Android 11+** e a permissão **Acesso a todos os arquivos** (`MANAGE_EXTERNAL_STORAGE`), concedida pela própria pessoa, porque a pasta de mídia do WhatsApp é protegida. Por isso esta variante é de distribuição privada, não do Google Play.
+
+Limites: só é possível preservar um áudio que o WhatsApp já tenha baixado para o disco. Se o remetente apagar antes do download no aparelho de quem recebe, não há arquivo a copiar. A preservação vale para o que chega depois da permissão concedida, mais uma janela de recuperação dos arquivos ainda presentes no disco.
 
 Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de produção e não deve ser publicada no Google Play. A assinatura definitiva e a proteção dos dados ainda devem ser definidas antes de distribuição pública.
 
