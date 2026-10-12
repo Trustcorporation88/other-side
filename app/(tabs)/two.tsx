@@ -151,10 +151,10 @@ function DriveBackupCard() {
       </View>
       <Text style={styles.cardDescription}>
         {!available
-          ? 'Disponível no APK do OtherSide. Conecte sua conta para enviar áudios e mensagens ao seu Google Drive.'
+          ? 'Disponível no APK do OtherSide. Conecte sua conta para enviar áudios, fotos e mensagens ao seu Google Drive.'
           : connected
-            ? `Áudios e mensagens vão para a pasta "OtherSide" no seu Drive. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
-            : 'Conecte sua conta do Google para guardar os áudios e mensagens no seu próprio Drive (pasta "OtherSide"). Só o app acessa esses arquivos.'}
+            ? `Áudios, fotos e mensagens vão para a pasta "OtherSide" no seu Drive. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
+            : 'Conecte sua conta do Google para guardar os áudios, fotos e mensagens no seu próprio Drive (pasta "OtherSide"). Só o app acessa esses arquivos.'}
       </Text>
 
       {connected ? (

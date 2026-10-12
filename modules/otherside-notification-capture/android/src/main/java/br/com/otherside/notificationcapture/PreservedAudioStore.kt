@@ -15,6 +15,7 @@ internal data class PreservedAudio(
   val origin: String,
   val originalModifiedAt: Long,
   val preservedAt: Long,
+  val kind: String = KIND_AUDIO,
 ) {
   fun toMap(): Map<String, Any> = mapOf(
     "id" to id,
@@ -26,6 +27,7 @@ internal data class PreservedAudio(
     "origin" to origin,
     "originalModifiedAt" to originalModifiedAt,
     "preservedAt" to preservedAt,
+    "kind" to kind,
   )
 
   fun toJson(): JSONObject = JSONObject().apply {
@@ -38,12 +40,15 @@ internal data class PreservedAudio(
     put("origin", origin)
     put("originalModifiedAt", originalModifiedAt)
     put("preservedAt", preservedAt)
+    put("kind", kind)
   }
 
   companion object {
     const val ORIGIN_RECEIVED = "received"
     const val ORIGIN_SENT = "sent"
     const val ORIGIN_UNKNOWN = "unknown"
+    const val KIND_AUDIO = "audio"
+    const val KIND_IMAGE = "image"
 
     fun fromJson(json: JSONObject): PreservedAudio = PreservedAudio(
       id = json.optString("id"),
@@ -55,6 +60,7 @@ internal data class PreservedAudio(
       origin = json.optString("origin", ORIGIN_UNKNOWN),
       originalModifiedAt = json.optLong("originalModifiedAt"),
       preservedAt = json.optLong("preservedAt"),
+      kind = json.optString("kind", KIND_AUDIO),
     )
   }
 }

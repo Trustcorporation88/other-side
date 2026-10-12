@@ -43,4 +43,19 @@ class WhatsAppAudioPreserverTest {
       WhatsAppAudioPreserver.originOf("/storage/emulated/0/WhatsApp/Media/WhatsApp Voice Notes/202510/A.opus"),
     )
   }
+
+  @Test
+  fun `reconhece imagens e classifica o tipo da midia`() {
+    assertTrue(WhatsAppAudioPreserver.isImage("IMG-20251012-WA0003.jpg"))
+    assertTrue(WhatsAppAudioPreserver.isImage("FOTO.PNG"))
+    assertTrue(WhatsAppAudioPreserver.isImage("sticker.webp"))
+    assertFalse(WhatsAppAudioPreserver.isImage("PTT-20251012-WA0001.opus"))
+
+    assertTrue(WhatsAppAudioPreserver.isMedia("IMG-20251012-WA0003.jpg"))
+    assertTrue(WhatsAppAudioPreserver.isMedia("PTT-20251012-WA0001.opus"))
+    assertFalse(WhatsAppAudioPreserver.isMedia("documento.pdf"))
+
+    assertEquals(PreservedAudio.KIND_IMAGE, WhatsAppAudioPreserver.kindOf("IMG-20251012-WA0003.jpg"))
+    assertEquals(PreservedAudio.KIND_AUDIO, WhatsAppAudioPreserver.kindOf("PTT-20251012-WA0001.opus"))
+  }
 }

@@ -26,17 +26,22 @@ internal object WhatsAppAudioPreserver {
   private const val INITIAL_SCAN_WINDOW_MS = 14L * 24 * 60 * 60 * 1000
 
   private val AUDIO_EXTENSIONS = setOf("opus", "oga", "ogg", "m4a", "aac", "mp3", "amr", "wav")
+  private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic")
 
   private val CANDIDATE_RELATIVE_ROOTS = listOf(
     "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes",
     "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio",
+    "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images",
     "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Voice Notes",
     "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Audio",
+    "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Images",
     // Caminhos legados (aparelhos atualizados de versões antigas do WhatsApp).
     "WhatsApp/Media/WhatsApp Voice Notes",
     "WhatsApp/Media/WhatsApp Audio",
+    "WhatsApp/Media/WhatsApp Images",
     "WhatsApp Business/Media/WhatsApp Voice Notes",
     "WhatsApp Business/Media/WhatsApp Audio",
+    "WhatsApp Business/Media/WhatsApp Images",
   )
 
   private val lock = Any()
@@ -87,7 +92,7 @@ internal object WhatsAppAudioPreserver {
     roots.forEach { root ->
       runCatching {
         root.walkTopDown()
-          .filter { it.isFile && isAudio(it.name) && it.lastModified() >= cutoff }
+          .filter { it.isFile && isMedia(it.name) && it.lastModified() >= cutoff }
           .sortedByDescending { it.lastModified() }
           .forEach { preserve(context, it) }
       }
@@ -100,7 +105,7 @@ internal object WhatsAppAudioPreserver {
 
   private fun preserve(context: Context, file: File) {
     try {
-      if (!isAudio(file.name) || !file.isFile || file.length() == 0L) return
+      if (!isMedia(file.name) || !file.isFile || file.length() == 0L) return
       val sourceKey = sourceKey(file)
       if (PreservedAudioStore.has(context, sourceKey)) return
 
@@ -110,7 +115,7 @@ internal object WhatsAppAudioPreserver {
       val dest = File(destDir, if (extension.isEmpty()) id else "$id.$extension")
       file.inputStream().use { input -> dest.outputStream().use(input::copyTo) }
 
-      val audio = PreservedAudio(
+      val media = PreservedAudio(
         id = id,
         sourceKey = sourceKey,
         fileName = file.name,
@@ -120,17 +125,26 @@ internal object WhatsAppAudioPreserver {
         origin = originOf(file.absolutePath),
         originalModifiedAt = file.lastModified(),
         preservedAt = System.currentTimeMillis(),
+        kind = kindOf(file.name),
       )
-      if (PreservedAudioStore.save(context, audio)) {
-        OtherSideNotificationCaptureModule.getInstance()?.emitAudioPreserved(audio)
+      if (PreservedAudioStore.save(context, media)) {
+        OtherSideNotificationCaptureModule.getInstance()?.emitAudioPreserved(media)
       }
     } catch (error: Exception) {
-      Log.e(TAG, "Não foi possível preservar o áudio", error)
+      Log.e(TAG, "Não foi possível preservar a mídia", error)
     }
   }
 
   internal fun isAudio(name: String): Boolean =
     name.substringAfterLast('.', "").lowercase(Locale.ROOT) in AUDIO_EXTENSIONS
+
+  internal fun isImage(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase(Locale.ROOT) in IMAGE_EXTENSIONS
+
+  internal fun isMedia(name: String): Boolean = isAudio(name) || isImage(name)
+
+  internal fun kindOf(name: String): String =
+    if (isImage(name)) PreservedAudio.KIND_IMAGE else PreservedAudio.KIND_AUDIO
 
   internal fun packageOf(path: String): String = when {
     path.contains("com.whatsapp.w4b") -> "com.whatsapp.w4b"

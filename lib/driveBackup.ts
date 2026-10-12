@@ -13,7 +13,7 @@ import {
 const RECORD_NAME = 'drive-uploads.json';
 const MESSAGES_KEY = '__mensagens_json__';
 
-const AUDIO_MIME: Record<string, string> = {
+const FILE_MIME: Record<string, string> = {
   opus: 'audio/ogg',
   oga: 'audio/ogg',
   ogg: 'audio/ogg',
@@ -22,11 +22,18 @@ const AUDIO_MIME: Record<string, string> = {
   mp3: 'audio/mpeg',
   amr: 'audio/amr',
   wav: 'audio/wav',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  heic: 'image/heic',
 };
 
-function mimeForAudio(fileName: string): string {
+function mimeForFile(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  return AUDIO_MIME[ext] ?? 'application/octet-stream';
+  return FILE_MIME[ext] ?? 'application/octet-stream';
 }
 
 function recordFile(): File {
@@ -74,21 +81,21 @@ export async function syncNow(): Promise<SyncResult> {
     if (!folderId) return empty;
 
     const record = readRecord();
-    const audios = getPreservedAudios();
+    const items = getPreservedAudios();
     let uploaded = 0;
     let failed = 0;
 
-    for (const audio of audios) {
-      if (record[audio.id]) continue;
+    for (const item of items) {
+      if (record[item.id]) continue;
       const driveId = await uploadLocalFile(token, {
-        fileUri: audio.uri,
-        name: audio.fileName,
-        mimeType: mimeForAudio(audio.fileName),
+        fileUri: item.uri,
+        name: item.fileName,
+        mimeType: mimeForFile(item.fileName),
         folderId,
-        appId: audio.id,
+        appId: item.id,
       });
       if (driveId) {
-        record[audio.id] = driveId;
+        record[item.id] = driveId;
         uploaded += 1;
       } else {
         failed += 1;
@@ -98,7 +105,7 @@ export async function syncNow(): Promise<SyncResult> {
     const messagesSynced = await syncMessages(token, folderId, record);
     writeRecord(record);
 
-    const pending = getPreservedAudios().filter((audio) => !record[audio.id]).length;
+    const pending = getPreservedAudios().filter((item) => !record[item.id]).length;
     return { uploaded, failed, pending, messagesSynced };
   } catch (_error) {
     return empty;
@@ -146,15 +153,15 @@ async function syncMessages(
   }
 }
 
-/** Quantos áudios ainda faltam subir. */
-export function pendingAudioCount(): number {
+/** Quantos arquivos (áudios + fotos) ainda faltam subir. */
+export function pendingCount(): number {
   const record = readRecord();
-  return getPreservedAudios().filter((audio) => !record[audio.id]).length;
+  return getPreservedAudios().filter((item) => !record[item.id]).length;
 }
 
-/** Quantos áudios já foram preservados no Drive (presentes hoje no aparelho). */
-export function uploadedAudioCount(): number {
+/** Quantos arquivos já foram enviados ao Drive (presentes hoje no aparelho). */
+export function uploadedCount(): number {
   const record = readRecord();
-  const presentIds = new Set(getPreservedAudios().map((audio) => audio.id));
+  const presentIds = new Set(getPreservedAudios().map((item) => item.id));
   return Object.keys(record).filter((id) => presentIds.has(id)).length;
 }
