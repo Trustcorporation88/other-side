@@ -11,6 +11,17 @@ class OtherSideNotificationCaptureService : NotificationListenerService() {
     private val ALLOWED_PACKAGES = setOf("com.whatsapp", "com.whatsapp.w4b")
   }
 
+  override fun onCreate() {
+    super.onCreate()
+    // O serviço mantém o processo vivo; aproveitamos para observar a pasta de mídia do WhatsApp.
+    WhatsAppAudioPreserver.start(applicationContext)
+  }
+
+  override fun onListenerConnected() {
+    super.onListenerConnected()
+    WhatsAppAudioPreserver.start(applicationContext)
+  }
+
   override fun onNotificationPosted(sbn: StatusBarNotification) {
     if (sbn.packageName !in ALLOWED_PACKAGES) return
 
