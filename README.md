@@ -36,6 +36,8 @@ O CI agora usa `assembleRelease` para incorporar o JavaScript e desativar o supo
 
 O listener usa a chave estável da notificação do Android junto ao conteúdo para reconhecer uma reentrega sem usar o horário, que pode mudar quando uma notificação antiga reaparece. Ao carregar o histórico legado, cópias exatamente iguais na mesma conversa são consolidadas. Notificações novas com chaves Android diferentes continuam sendo eventos independentes, mesmo que o texto seja igual.
 
+O APK 1.0.3 inclui um diagnóstico local e transitório de anexos de áudio nas notificações. Ele verifica se o WhatsApp expôs uma URI de mídia e se o OtherSide consegue abri-la no instante da notificação. Não lê, copia, reproduz nem envia o arquivo. Um resultado acessível indica que será tecnicamente viável implementar a cópia local em uma etapa separada; não significa que o áudio já foi preservado.
+
 Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de produção e não deve ser publicada no Google Play. A assinatura definitiva e a proteção dos dados ainda devem ser definidas antes de distribuição pública.
 
 ```bash

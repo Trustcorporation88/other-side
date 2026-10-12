@@ -8,6 +8,7 @@ export type CapturedNotification = {
   receivedAt: number;
   packageName: string;
   isDemo: boolean;
+  audioStatus: 'not_applicable' | 'not_provided' | 'not_accessible' | 'accessible';
 };
 
 type NativeEvents = {

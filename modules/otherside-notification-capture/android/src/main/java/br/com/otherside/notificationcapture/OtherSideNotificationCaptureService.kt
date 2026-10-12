@@ -51,6 +51,7 @@ class OtherSideNotificationCaptureService : NotificationListenerService() {
         receivedAt = sbn.postTime,
         packageName = sbn.packageName,
         isDemo = false,
+        audioStatus = AudioAttachmentDiagnostics.inspect(this, extras, message),
       )
 
       if (OtherSideNotificationStore.save(applicationContext, captured)) {

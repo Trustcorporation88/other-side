@@ -13,6 +13,7 @@ internal data class CapturedNotification(
   val receivedAt: Long,
   val packageName: String,
   val isDemo: Boolean,
+  val audioStatus: String = AudioAttachmentDiagnostics.NOT_APPLICABLE,
 ) {
   fun toMap(): Map<String, Any> = mapOf(
     "id" to id,
@@ -22,6 +23,7 @@ internal data class CapturedNotification(
     "receivedAt" to receivedAt,
     "packageName" to packageName,
     "isDemo" to isDemo,
+    "audioStatus" to audioStatus,
   )
 
   fun toJson(): JSONObject = JSONObject().apply {
@@ -32,6 +34,7 @@ internal data class CapturedNotification(
     put("receivedAt", receivedAt)
     put("packageName", packageName)
     put("isDemo", isDemo)
+    put("audioStatus", audioStatus)
   }
 
   companion object {
@@ -43,6 +46,7 @@ internal data class CapturedNotification(
       receivedAt = json.optLong("receivedAt"),
       packageName = json.optString("packageName"),
       isDemo = json.optBoolean("isDemo", false),
+      audioStatus = json.optString("audioStatus", AudioAttachmentDiagnostics.NOT_APPLICABLE),
     )
   }
 }
