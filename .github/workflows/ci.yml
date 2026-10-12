@@ -53,6 +53,10 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Native notification deduplication unit tests
+        working-directory: android
+        run: ./gradlew :otherside-notification-capture:testDebugUnitTest --no-daemon --no-parallel --max-workers=2 --console=plain -PreactNativeArchitectures=arm64-v8a,x86_64
+
       # Release bundles JavaScript and disables developer support. The generated
       # Expo test keystore is used only for private testing, not Play publication.
       - name: Standalone test APK with embedded JavaScript

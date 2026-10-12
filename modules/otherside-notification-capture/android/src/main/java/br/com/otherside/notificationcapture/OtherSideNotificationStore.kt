@@ -54,9 +54,12 @@ internal object OtherSideNotificationStore {
   private val lock = Any()
 
   fun save(context: Context, notification: CapturedNotification): Boolean = synchronized(lock) {
-    val records = readJson(context)
+    val original = readJson(context)
+    val records = deduplicate(original)
+    if (records.length() != original.length()) writeJson(context, records)
     for (index in 0 until records.length()) {
-      if (records.optJSONObject(index)?.optString("id") == notification.id) return false
+      val existing = records.optJSONObject(index) ?: continue
+      if (existing.optString("id") == notification.id) return false
     }
 
     val updated = JSONArray().apply {
@@ -71,7 +74,9 @@ internal object OtherSideNotificationStore {
   }
 
   fun getAll(context: Context): List<CapturedNotification> = synchronized(lock) {
-    val records = readJson(context)
+    val original = readJson(context)
+    val records = deduplicate(original)
+    if (records.length() != original.length()) writeJson(context, records)
     buildList {
       for (index in 0 until records.length()) {
         records.optJSONObject(index)?.let { add(CapturedNotification.fromJson(it)) }
@@ -106,6 +111,24 @@ internal object OtherSideNotificationStore {
       JSONArray()
     }
   }
+
+  /** Remove mensagens repetidas que já ficaram gravadas pela versão anterior. */
+  private fun deduplicate(records: JSONArray): JSONArray {
+    val seen = HashSet<String>()
+    return JSONArray().apply {
+      for (index in 0 until records.length()) {
+        val record = records.optJSONObject(index) ?: continue
+        if (seen.add(fingerprint(record))) put(record)
+      }
+    }
+  }
+
+  private fun fingerprint(record: JSONObject): String = NotificationFingerprint.content(
+    packageName = record.optString("packageName"),
+    conversation = record.optString("conversation"),
+    sender = record.optString("sender"),
+    message = record.optString("message"),
+  )
 
   private fun writeJson(context: Context, records: JSONArray) {
     preferences(context).edit().putString(RECORDS_KEY, records.toString()).apply()

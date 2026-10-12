@@ -35,8 +35,13 @@ class OtherSideNotificationCaptureService : NotificationListenerService() {
         ?.trim()
         .orEmpty()
       val conversation = conversationTitle.ifBlank { title }
-      val id = listOf(sbn.packageName, sbn.key, sbn.postTime, message.hashCode())
-        .joinToString("|")
+      val id = NotificationFingerprint.create(
+        packageName = sbn.packageName,
+        notificationKey = sbn.key,
+        conversation = conversation,
+        sender = title,
+        message = message,
+      )
 
       val captured = CapturedNotification(
         id = id,
