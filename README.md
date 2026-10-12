@@ -34,6 +34,8 @@ O APK `assembleDebug` não inclui o JavaScript do aplicativo por padrão e depen
 
 O CI agora usa `assembleRelease` para incorporar o JavaScript e desativar o suporte de desenvolvimento. Antes do upload, `scripts/verify_standalone_apk.py` verifica integridade do ZIP, bundle não vazio, bibliotecas nativas e SHA-256. Um segundo job instala o APK em emulador Android, abre e reabre o app sem Metro e sem rede, e exige a tela de mensagens.
 
+O listener usa a chave estável da notificação do Android junto ao conteúdo para reconhecer uma reentrega sem usar o horário, que pode mudar quando uma notificação antiga reaparece. Ao carregar o histórico legado, cópias exatamente iguais na mesma conversa são consolidadas. Notificações novas com chaves Android diferentes continuam sendo eventos independentes, mesmo que o texto seja igual.
+
 Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de produção e não deve ser publicada no Google Play. A assinatura definitiva e a proteção dos dados ainda devem ser definidas antes de distribuição pública.
 
 ```bash
