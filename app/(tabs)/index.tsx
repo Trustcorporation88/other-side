@@ -33,6 +33,13 @@ function formatNotificationTime(timestamp: number) {
   });
 }
 
+function getAudioStatusLabel(status: string) {
+  if (status === 'accessible') return 'TESTE: áudio acessível neste aviso. Ainda não foi salvo.';
+  if (status === 'not_accessible') return 'TESTE: o aviso aponta um áudio, mas o Android bloqueou o acesso.';
+  if (status === 'not_provided') return 'TESTE: o WhatsApp não incluiu o arquivo de áudio no aviso.';
+  return null;
+}
+
 export default function MessagesScreen() {
   const [query, setQuery] = useState('');
   const { notifications, listenerEnabled, nativeAvailable, refresh } = useNotificationCapture();
@@ -151,6 +158,11 @@ export default function MessagesScreen() {
                   <Text style={styles.messageTime}>{formatNotificationTime(notification.receivedAt)}</Text>
                 </View>
                 <Text style={styles.messageBody}>{notification.message}</Text>
+                {getAudioStatusLabel(notification.audioStatus) && (
+                  <Text style={styles.audioDiagnostic}>
+                    {getAudioStatusLabel(notification.audioStatus)}
+                  </Text>
+                )}
                 <Text style={styles.messageMeta}>WHATSAPP · PRESERVADA NO APARELHO</Text>
               </View>
             ))}
@@ -422,6 +434,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     marginTop: 15,
+  },
+  audioDiagnostic: {
+    color: colors.amber,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 10,
   },
   messageMeta: {
     color: colors.muted,
