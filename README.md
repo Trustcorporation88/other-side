@@ -6,7 +6,8 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 
 - Base Expo Router em TypeScript criada.
 - Primeira interface implementada com histórico vazio, status da captura e aba de ajustes.
-- Integração nativa Android ainda será implementada em Kotlin.
+- Módulo Kotlin conectado ao histórico local e ao acesso às notificações.
+- Validação em aparelho físico ainda necessária.
 
 ## Identidade
 
@@ -26,3 +27,16 @@ npm run web
 ```
 
 A captura real exigirá um build Android customizado com prebuild ou EAS. O Expo Go não incorpora o `NotificationListenerService` próprio do aplicativo.
+
+## APK autônomo de teste
+
+O APK `assembleDebug` não inclui o JavaScript do aplicativo por padrão e depende de Metro. As entregas debug anteriores não continham `assets/index.android.bundle`, causando a permanência no splash ao abrir fora do ambiente de desenvolvimento. As alterações de fonte e splash não tratavam a causa do empacotamento.
+
+O CI agora usa `assembleRelease` para incorporar o JavaScript e desativar o suporte de desenvolvimento. Antes do upload, `scripts/verify_standalone_apk.py` verifica integridade do ZIP, bundle não vazio, bibliotecas nativas e SHA-256. Um segundo job instala o APK em emulador Android, abre e reabre o app sem Metro e sem rede, e exige a tela de mensagens.
+
+Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de produção e não deve ser publicada no Google Play. A assinatura definitiva e a proteção dos dados ainda devem ser definidas antes de distribuição pública.
+
+```bash
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
+python3 scripts/verify_standalone_apk.py /caminho/app-release.apk
+```
