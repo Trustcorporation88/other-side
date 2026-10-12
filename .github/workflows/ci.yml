@@ -6,10 +6,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
+    env:
+      NODE_ENV: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,11 +29,14 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies including build tools
+        run: npm ci --include=dev
 
       - name: TypeScript check
         run: npx tsc --noEmit
+
+      - name: Packaging regression tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
       - name: Expo web export
         run: npx expo export --platform web
@@ -41,13 +53,64 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Android debug build
+      # Release bundles JavaScript and disables developer support. The generated
+      # Expo test keystore is used only for private testing, not Play publication.
+      - name: Standalone test APK with embedded JavaScript
         working-directory: android
-        run: ./gradlew :app:assembleDebug --no-daemon --no-parallel --max-workers=2 --console=plain -PreactNativeArchitectures=arm64-v8a -PnewArchEnabled=false
+        run: ./gradlew :app:assembleRelease --no-daemon --no-parallel --max-workers=2 --console=plain -PreactNativeArchitectures=arm64-v8a,x86_64
 
-      - name: Upload debug APK
+      - name: Reject APK without embedded app bundle
+        run: python3 scripts/verify_standalone_apk.py android/app/build/outputs/apk/release/app-release.apk --report apk-verification.json
+
+      - name: Upload standalone test APK
         uses: actions/upload-artifact@v4
         with:
-          name: other-side-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: other-side-standalone-test-apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            apk-verification.json
           if-no-files-found: error
+
+  android-smoke:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download standalone APK
+        uses: actions/download-artifact@v4
+        with:
+          name: other-side-standalone-test-apk
+          path: apk
+
+      - name: Enable KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch and relaunch app without Metro or network
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/smoke_android.sh "$(find apk -name app-release.apk -print -quit)" smoke-output
+
+      - name: Save emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: other-side-android-smoke
+          path: smoke-output
+          if-no-files-found: warn
