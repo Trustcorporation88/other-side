@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { openNotificationSettings } from '@otherside/notification-capture';
 import { useNotificationCapture } from '@/hooks/useNotificationCapture';
+import { useDriveBackup } from '@/hooks/useDriveBackup';
 
 const colors = {
   navy: '#071527',
@@ -74,11 +75,14 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        <Text style={styles.sectionLabel}>BACKUP</Text>
+        <DriveBackupCard />
+
         <Text style={styles.sectionLabel}>PRIVACIDADE</Text>
         <View style={styles.privacyCard}>
-          <Text style={styles.privacyTitle}>Um cofre local, sem conta</Text>
+          <Text style={styles.privacyTitle}>Seus dados, sua conta</Text>
           <Text style={styles.privacyDescription}>
-            As mensagens serão gravadas no armazenamento privado do aparelho. Não haverá servidor, sincronização, backup automático ou leitura do banco interno do WhatsApp.
+            As mensagens e áudios ficam no armazenamento privado do aparelho. O backup é opcional e vai para o SEU Google Drive, só depois que você conectar sua conta. Não há servidor nosso nem leitura do banco interno do WhatsApp.
           </Text>
           <View style={styles.localOnlyRow}>
             <View style={styles.localOnlyDot} />
@@ -99,6 +103,93 @@ export default function SettingsScreen() {
         </Text>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function DriveBackupCard() {
+  const { available, connected, email, uploaded, pending, syncing, busy, connect, disconnect, sync } =
+    useDriveBackup();
+
+  async function handleConnect() {
+    if (!available) {
+      Alert.alert(
+        'Build Android necessário',
+        'O backup no Google Drive funciona apenas no APK do OtherSide, não no Expo Go.',
+      );
+      return;
+    }
+    const ok = await connect();
+    if (!ok) {
+      Alert.alert('Não conectado', 'O login do Google não foi concluído. Tente de novo.');
+    }
+  }
+
+  function handleDisconnect() {
+    Alert.alert(
+      'Desconectar o Google Drive',
+      'O OtherSide para de enviar novos arquivos. O que já subiu continua no seu Drive.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Desconectar', style: 'destructive', onPress: () => void disconnect() },
+      ],
+    );
+  }
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardIcon}>
+          <View style={styles.cardIconDot} />
+        </View>
+        <View style={styles.cardHeaderCopy}>
+          <Text style={styles.cardTitle}>Backup no Google Drive</Text>
+          <Text style={[styles.cardSubtitle, connected && styles.cardSubtitleActive]}>
+            {!available ? 'APK Android necessário' : connected ? (email ?? 'Conectado') : 'Não conectado'}
+          </Text>
+        </View>
+        <View style={[styles.warningDot, connected && styles.activeDot]} />
+      </View>
+      <Text style={styles.cardDescription}>
+        {!available
+          ? 'Disponível no APK do OtherSide. Conecte sua conta para enviar áudios e mensagens ao seu Google Drive.'
+          : connected
+            ? `Áudios e mensagens vão para a pasta "OtherSide" no seu Drive. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
+            : 'Conecte sua conta do Google para guardar os áudios e mensagens no seu próprio Drive (pasta "OtherSide"). Só o app acessa esses arquivos.'}
+      </Text>
+
+      {connected ? (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            disabled={syncing}
+            onPress={() => void sync()}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+            <Text style={styles.secondaryButtonText}>
+              {syncing ? 'Enviando…' : 'Sincronizar agora'}
+            </Text>
+            <Text style={styles.secondaryButtonArrow}>↑</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={handleDisconnect}
+            style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
+            <Text style={styles.linkButtonText}>Desconectar</Text>
+          </Pressable>
+        </>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={handleConnect}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+          <Text style={styles.secondaryButtonText}>
+            {busy ? 'Conectando…' : available ? 'Conectar Google Drive' : 'Como instalar o APK'}
+          </Text>
+          <Text style={styles.secondaryButtonArrow}>↗</Text>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -226,6 +317,16 @@ const styles = StyleSheet.create({
   secondaryButtonArrow: {
     color: colors.blue,
     fontSize: 20,
+  },
+  linkButton: {
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  linkButtonText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.72,

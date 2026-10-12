@@ -1,0 +1,160 @@
+import { File, Paths } from 'expo-file-system';
+
+import { getCapturedNotifications, getPreservedAudios } from '@otherside/notification-capture';
+
+import {
+  ensureFolder,
+  getAccessToken,
+  uploadLocalFile,
+  uploadMedia,
+} from './googleDrive';
+
+// Registro local do que já subiu: id do item -> id do arquivo no Drive.
+const RECORD_NAME = 'drive-uploads.json';
+const MESSAGES_KEY = '__mensagens_json__';
+
+const AUDIO_MIME: Record<string, string> = {
+  opus: 'audio/ogg',
+  oga: 'audio/ogg',
+  ogg: 'audio/ogg',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  mp3: 'audio/mpeg',
+  amr: 'audio/amr',
+  wav: 'audio/wav',
+};
+
+function mimeForAudio(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  return AUDIO_MIME[ext] ?? 'application/octet-stream';
+}
+
+function recordFile(): File {
+  return new File(Paths.document, RECORD_NAME);
+}
+
+function readRecord(): Record<string, string> {
+  try {
+    const file = recordFile();
+    if (!file.exists) return {};
+    const raw = file.textSync();
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function writeRecord(record: Record<string, string>): void {
+  try {
+    const file = recordFile();
+    if (!file.exists) file.create();
+    file.write(JSON.stringify(record));
+  } catch (_error) {
+    // best effort
+  }
+}
+
+export type SyncResult = {
+  uploaded: number;
+  failed: number;
+  pending: number;
+  messagesSynced: boolean;
+};
+
+let syncing = false;
+
+export async function syncNow(): Promise<SyncResult> {
+  const empty: SyncResult = { uploaded: 0, failed: 0, pending: 0, messagesSynced: false };
+  if (syncing) return empty;
+  syncing = true;
+  try {
+    const token = await getAccessToken();
+    if (!token) return empty;
+    const folderId = await ensureFolder(token);
+    if (!folderId) return empty;
+
+    const record = readRecord();
+    const audios = getPreservedAudios();
+    let uploaded = 0;
+    let failed = 0;
+
+    for (const audio of audios) {
+      if (record[audio.id]) continue;
+      const driveId = await uploadLocalFile(token, {
+        fileUri: audio.uri,
+        name: audio.fileName,
+        mimeType: mimeForAudio(audio.fileName),
+        folderId,
+        appId: audio.id,
+      });
+      if (driveId) {
+        record[audio.id] = driveId;
+        uploaded += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    const messagesSynced = await syncMessages(token, folderId, record);
+    writeRecord(record);
+
+    const pending = getPreservedAudios().filter((audio) => !record[audio.id]).length;
+    return { uploaded, failed, pending, messagesSynced };
+  } catch (_error) {
+    return empty;
+  } finally {
+    syncing = false;
+  }
+}
+
+/** Sobe (ou atualiza) um único JSON com o texto das mensagens preservadas. */
+async function syncMessages(
+  token: string,
+  folderId: string,
+  record: Record<string, string>,
+): Promise<boolean> {
+  try {
+    const notifications = getCapturedNotifications();
+    if (notifications.length === 0) return false;
+
+    const tmp = new File(Paths.cache, 'otherside-mensagens.json');
+    if (tmp.exists) tmp.delete();
+    tmp.create();
+    tmp.write(JSON.stringify(notifications, null, 2));
+
+    const existingId = record[MESSAGES_KEY];
+    if (existingId) {
+      const ok = await uploadMedia(token, existingId, tmp.uri, 'application/json');
+      if (ok) return true;
+      // Arquivo pode ter sido apagado no Drive; recria abaixo.
+    }
+
+    const driveId = await uploadLocalFile(token, {
+      fileUri: tmp.uri,
+      name: 'mensagens.json',
+      mimeType: 'application/json',
+      folderId,
+      appId: 'mensagens',
+    });
+    if (driveId) {
+      record[MESSAGES_KEY] = driveId;
+      return true;
+    }
+    return false;
+  } catch (_error) {
+    return false;
+  }
+}
+
+/** Quantos áudios ainda faltam subir. */
+export function pendingAudioCount(): number {
+  const record = readRecord();
+  return getPreservedAudios().filter((audio) => !record[audio.id]).length;
+}
+
+/** Quantos áudios já foram preservados no Drive (presentes hoje no aparelho). */
+export function uploadedAudioCount(): number {
+  const record = readRecord();
+  const presentIds = new Set(getPreservedAudios().map((audio) => audio.id));
+  return Object.keys(record).filter((id) => presentIds.has(id)).length;
+}
