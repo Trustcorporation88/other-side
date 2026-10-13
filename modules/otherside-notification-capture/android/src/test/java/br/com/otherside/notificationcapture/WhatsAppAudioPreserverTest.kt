@@ -58,4 +58,21 @@ class WhatsAppAudioPreserverTest {
     assertEquals(PreservedAudio.KIND_IMAGE, WhatsAppAudioPreserver.kindOf("IMG-20251012-WA0003.jpg"))
     assertEquals(PreservedAudio.KIND_AUDIO, WhatsAppAudioPreserver.kindOf("PTT-20251012-WA0001.opus"))
   }
+
+  @Test
+  fun `reconhece documentos no backup completo mas nao no observador`() {
+    assertTrue(WhatsAppAudioPreserver.isDocument("DOC-20251012-WA0004.pdf"))
+    assertTrue(WhatsAppAudioPreserver.isDocument("planilha.XLSX"))
+    assertFalse(WhatsAppAudioPreserver.isDocument("IMG-20251012-WA0003.jpg"))
+
+    // O observador ao vivo (isMedia) não pega documento; o backup completo (isAnyMedia) pega.
+    assertFalse(WhatsAppAudioPreserver.isMedia("DOC-20251012-WA0004.pdf"))
+    assertTrue(WhatsAppAudioPreserver.isAnyMedia("DOC-20251012-WA0004.pdf"))
+    assertTrue(WhatsAppAudioPreserver.isAnyMedia("PTT-20251012-WA0001.opus"))
+
+    // Vídeo fica de fora de propósito.
+    assertFalse(WhatsAppAudioPreserver.isAnyMedia("VID-20251012-WA0005.mp4"))
+
+    assertEquals(PreservedAudio.KIND_DOCUMENT, WhatsAppAudioPreserver.kindOf("DOC-20251012-WA0004.pdf"))
+  }
 }

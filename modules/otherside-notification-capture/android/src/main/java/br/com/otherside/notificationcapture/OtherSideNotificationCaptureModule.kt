@@ -88,6 +88,11 @@ class OtherSideNotificationCaptureModule : Module() {
       Unit
     }
 
+    Function("getAllWhatsAppMedia") {
+      val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any>>()
+      WhatsAppAudioPreserver.listAllMedia(context)
+    }
+
     Function("getPreservedAudios") {
       val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any>>()
       PreservedAudioStore.getAll(context).map { it.toMap() }

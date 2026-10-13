@@ -1,6 +1,10 @@
 import { File, Paths } from 'expo-file-system';
 
-import { getCapturedNotifications, getPreservedAudios } from '@otherside/notification-capture';
+import {
+  getAllWhatsAppMedia,
+  getCapturedNotifications,
+  getPreservedAudios,
+} from '@otherside/notification-capture';
 
 import {
   ensureFolder,
@@ -89,6 +93,7 @@ export type SyncResult = {
 };
 
 let syncing = false;
+let lastPending = 0;
 
 export async function syncNow(
   onProgress?: (done: number, total: number) => void,
@@ -156,13 +161,36 @@ export async function syncNow(
     }
     if (recordChanged) writeRecord(record);
 
-    // 3. Envia os itens que ainda não estão no Drive, direto na subpasta do mês.
-    const toUpload = getPreservedAudios().filter((item) => !record[item.id]);
+    // 3. Lista de envio: TODO o histórico no celular (áudios, fotos, documentos) + as cópias
+    //    locais (que cobrem itens já apagados do WhatsApp), sem duplicar por id.
+    type UploadItem = { id: string; uri: string; fileName: string; originalModifiedAt: number };
+    const uploadMap = new Map<string, UploadItem>();
+    for (const media of getAllWhatsAppMedia()) {
+      if (!uploadMap.has(media.id)) {
+        uploadMap.set(media.id, {
+          id: media.id,
+          uri: media.uri,
+          fileName: media.fileName,
+          originalModifiedAt: media.originalModifiedAt,
+        });
+      }
+    }
+    for (const local of getPreservedAudios()) {
+      if (!uploadMap.has(local.id)) {
+        uploadMap.set(local.id, {
+          id: local.id,
+          uri: local.uri,
+          fileName: local.fileName,
+          originalModifiedAt: local.originalModifiedAt,
+        });
+      }
+    }
+    const toUpload = [...uploadMap.values()].filter((item) => !record[item.id]);
     let uploaded = 0;
     let failed = 0;
 
     for (const item of toUpload) {
-      const date = dateFromName(item.fileName) ?? new Date(item.originalModifiedAt || item.preservedAt);
+      const date = dateFromName(item.fileName) ?? new Date(item.originalModifiedAt || Date.now());
       const targetId = await monthFolderFor(date);
       const modifiedTime = new Date(item.originalModifiedAt || date.getTime()).toISOString();
       const driveId = await uploadLocalFile(token, {
@@ -189,7 +217,8 @@ export async function syncNow(
     writeRecord(record);
     evictOldLocalFiles(record);
 
-    const pending = getPreservedAudios().filter((item) => !record[item.id]).length;
+    const pending = Math.max(0, toUpload.length - uploaded);
+    lastPending = pending;
     return { uploaded, failed, pending, messagesSynced };
   } catch (_error) {
     return empty;
@@ -262,15 +291,13 @@ function evictOldLocalFiles(record: Record<string, string>): void {
   }
 }
 
-/** Quantos arquivos (áudios + fotos) ainda faltam subir. */
+/** Quantos arquivos ainda faltam subir (do último cálculo de sincronização). */
 export function pendingCount(): number {
-  const record = readRecord();
-  return getPreservedAudios().filter((item) => !record[item.id]).length;
+  return lastPending;
 }
 
-/** Quantos arquivos já foram enviados ao Drive (presentes hoje no aparelho). */
+/** Quantos arquivos já estão no Drive (total do registro, menos o mensagens.json). */
 export function uploadedCount(): number {
   const record = readRecord();
-  const presentIds = new Set(getPreservedAudios().map((item) => item.id));
-  return Object.keys(record).filter((id) => presentIds.has(id)).length;
+  return Object.keys(record).filter((id) => id !== MESSAGES_KEY).length;
 }

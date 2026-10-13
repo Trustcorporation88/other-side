@@ -25,6 +25,15 @@ export type PreservedAudio = {
   kind: 'audio' | 'image';
 };
 
+export type WhatsAppMediaItem = {
+  id: string;
+  uri: string;
+  fileName: string;
+  kind: 'audio' | 'image' | 'document';
+  originalModifiedAt: number;
+  sizeBytes: number;
+};
+
 type NativeEvents = {
   onNotificationCaptured: (event: CapturedNotification) => void;
   onAudioPreserved: (event: PreservedAudio) => void;
@@ -45,6 +54,7 @@ type NativeModule = {
   requestAllFilesAccess: () => void;
   startAudioPreservation: () => void;
   getPreservedAudios: () => PreservedAudio[];
+  getAllWhatsAppMedia: () => WhatsAppMediaItem[];
   getPreservedAudioUri: (id: string) => string | null;
   deletePreservedAudio: (id: string) => void;
   clearPreservedAudios: () => void;
@@ -145,6 +155,14 @@ export function startAudioPreservation(): void {
 export function getPreservedAudios(): PreservedAudio[] {
   try {
     return nativeModule?.getPreservedAudios() ?? [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+export function getAllWhatsAppMedia(): WhatsAppMediaItem[] {
+  try {
+    return nativeModule?.getAllWhatsAppMedia() ?? [];
   } catch (_error) {
     return [];
   }
