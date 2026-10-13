@@ -105,6 +105,51 @@ export async function ensureFolder(token: string): Promise<string | null> {
   }
 }
 
+/**
+ * Lista os arquivos já na pasta e devolve o mapa { idDoItem -> idNoDrive } pela appProperty
+ * "otherside". Serve para reconhecer o que já subiu (evita re-enviar) e manda duplicatas
+ * para a lixeira do Drive (recuperável), mantendo uma cópia por item.
+ */
+export async function listUploadedIds(token: string, folderId: string): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  const duplicates: string[] = [];
+  let pageToken: string | undefined;
+  try {
+    do {
+      const query = `'${folderId}' in parents and trashed=false`;
+      const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+      const res = await driveFetch(
+        token,
+        `files?q=${encodeURIComponent(query)}&fields=nextPageToken,files(id,appProperties)&spaces=drive&pageSize=1000${pageParam}`,
+      );
+      if (!res.ok) break;
+      const data = await res.json();
+      for (const file of data.files ?? []) {
+        const itemId = file?.appProperties?.otherside;
+        if (!itemId || !file.id) continue;
+        if (map[itemId]) duplicates.push(file.id);
+        else map[itemId] = file.id;
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+
+    for (const duplicateId of duplicates) {
+      try {
+        await driveFetch(token, `files/${duplicateId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trashed: true }),
+        });
+      } catch (_error) {
+        // best effort
+      }
+    }
+  } catch (_error) {
+    // best effort
+  }
+  return map;
+}
+
 /** Cria o arquivo (metadados) e envia os bytes. Devolve o id no Drive ou null. */
 export async function uploadLocalFile(
   token: string,
