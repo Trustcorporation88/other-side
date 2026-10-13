@@ -107,8 +107,19 @@ export default function SettingsScreen() {
 }
 
 function DriveBackupCard() {
-  const { available, connected, email, uploaded, pending, syncing, busy, connect, disconnect, sync } =
-    useDriveBackup();
+  const {
+    available,
+    connected,
+    email,
+    uploaded,
+    pending,
+    syncing,
+    progress,
+    busy,
+    connect,
+    disconnect,
+    sync,
+  } = useDriveBackup();
 
   async function handleConnect() {
     if (!available) {
@@ -153,7 +164,9 @@ function DriveBackupCard() {
         {!available
           ? 'Disponível no APK do OtherSide. Conecte sua conta para enviar áudios, fotos e mensagens ao seu Google Drive.'
           : connected
-            ? `Áudios, fotos e mensagens vão para a pasta "OtherSide" no seu Drive. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
+            ? syncing && progress
+              ? `Enviando para o seu Drive… ${progress.done} de ${progress.total}. Melhor no Wi-Fi.`
+              : `Áudios, fotos e mensagens vão para a pasta "OtherSide" no seu Drive. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
             : 'Conecte sua conta do Google para guardar os áudios, fotos e mensagens no seu próprio Drive (pasta "OtherSide"). Só o app acessa esses arquivos.'}
       </Text>
 
@@ -165,7 +178,11 @@ function DriveBackupCard() {
             onPress={() => void sync()}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
             <Text style={styles.secondaryButtonText}>
-              {syncing ? 'Enviando…' : 'Sincronizar agora'}
+              {syncing
+                ? progress
+                  ? `Enviando ${progress.done}/${progress.total}…`
+                  : 'Enviando…'
+                : 'Sincronizar agora'}
             </Text>
             <Text style={styles.secondaryButtonArrow}>↑</Text>
           </Pressable>

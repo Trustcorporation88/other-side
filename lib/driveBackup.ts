@@ -70,7 +70,9 @@ export type SyncResult = {
 
 let syncing = false;
 
-export async function syncNow(): Promise<SyncResult> {
+export async function syncNow(
+  onProgress?: (done: number, total: number) => void,
+): Promise<SyncResult> {
   const empty: SyncResult = { uploaded: 0, failed: 0, pending: 0, messagesSynced: false };
   if (syncing) return empty;
   syncing = true;
@@ -81,12 +83,11 @@ export async function syncNow(): Promise<SyncResult> {
     if (!folderId) return empty;
 
     const record = readRecord();
-    const items = getPreservedAudios();
+    const toUpload = getPreservedAudios().filter((item) => !record[item.id]);
     let uploaded = 0;
     let failed = 0;
 
-    for (const item of items) {
-      if (record[item.id]) continue;
+    for (const item of toUpload) {
       const driveId = await uploadLocalFile(token, {
         fileUri: item.uri,
         name: item.fileName,
@@ -97,6 +98,9 @@ export async function syncNow(): Promise<SyncResult> {
       if (driveId) {
         record[item.id] = driveId;
         uploaded += 1;
+        // Salva a cada item: se o app fechar no meio, retoma de onde parou.
+        writeRecord(record);
+        onProgress?.(uploaded, toUpload.length);
       } else {
         failed += 1;
       }
