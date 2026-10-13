@@ -104,6 +104,7 @@ export async function syncNow(): Promise<SyncResult> {
 
     const messagesSynced = await syncMessages(token, folderId, record);
     writeRecord(record);
+    evictOldLocalFiles(record);
 
     const pending = getPreservedAudios().filter((item) => !record[item.id]).length;
     return { uploaded, failed, pending, messagesSynced };
@@ -150,6 +151,31 @@ async function syncMessages(
     return false;
   } catch (_error) {
     return false;
+  }
+}
+
+// Itens mais antigos que isto, já enviados ao Drive, têm a cópia local apagada (fica no Drive).
+const EVICTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Id do arquivo no Drive para um item preservado, ou null se ainda não subiu. */
+export function driveFileIdFor(id: string): string | null {
+  const record = readRecord();
+  return record[id] ?? null;
+}
+
+/** Apaga a cópia local (arquivo cheio) dos itens antigos já no Drive, mantendo índice e miniatura. */
+function evictOldLocalFiles(record: Record<string, string>): void {
+  const cutoff = Date.now() - EVICTION_WINDOW_MS;
+  for (const item of getPreservedAudios()) {
+    if (!record[item.id]) continue; // só apaga o que já está no Drive
+    const when = item.originalModifiedAt || item.preservedAt;
+    if (when >= cutoff) continue; // recentes ficam no celular
+    try {
+      const local = new File(item.uri);
+      if (local.exists) local.delete();
+    } catch (_error) {
+      // best effort
+    }
   }
 }
 

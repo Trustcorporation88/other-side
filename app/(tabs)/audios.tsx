@@ -11,8 +11,9 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
-import { getPreservedAudioUri, type PreservedAudio } from '@otherside/notification-capture';
+import { type PreservedAudio } from '@otherside/notification-capture';
 import { usePreservedMedia } from '@/hooks/usePreservedMedia';
+import { resolveMediaUri } from '@/lib/mediaResolver';
 
 const colors = {
   navy: '#071527',
@@ -73,6 +74,7 @@ export default function AudiosScreen() {
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   // Agrupado por dia, com os dias e os áudios mais recentes no topo.
   const groupedAudios = useMemo(() => {
@@ -120,7 +122,7 @@ export default function AudiosScreen() {
     }
   }, [status.didJustFinish, player]);
 
-  function togglePlay(audio: PreservedAudio) {
+  async function togglePlay(audio: PreservedAudio) {
     if (activeId === audio.id) {
       if (status.playing) {
         player.pause();
@@ -132,10 +134,16 @@ export default function AudiosScreen() {
       }
       return;
     }
+    if (loadingId) return;
 
-    const uri = getPreservedAudioUri(audio.id) ?? audio.uri;
+    setLoadingId(audio.id);
+    const uri = await resolveMediaUri(audio);
+    setLoadingId(null);
     if (!uri) {
-      Alert.alert('Áudio indisponível', 'A cópia local deste áudio não foi encontrada.');
+      Alert.alert(
+        'Áudio indisponível',
+        'Não foi possível abrir este áudio — sem cópia no aparelho nem no Drive, ou sem conexão.',
+      );
       return;
     }
 
@@ -246,15 +254,18 @@ export default function AudiosScreen() {
                 {group.items.map((audio) => {
                   const isActive = activeId === audio.id;
                   const isPlaying = isActive && status.playing;
+                  const isLoading = loadingId === audio.id;
                   return (
                     <View key={audio.id} style={[styles.card, isActive && styles.cardActive]}>
                       <View style={styles.cardRow}>
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel={isPlaying ? 'Pausar áudio' : 'Reproduzir áudio'}
-                          onPress={() => togglePlay(audio)}
+                          onPress={() => void togglePlay(audio)}
                           style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}>
-                          <Text style={styles.playGlyph}>{isPlaying ? '❚❚' : '▶'}</Text>
+                          <Text style={styles.playGlyph}>
+                            {isLoading ? '⋯' : isPlaying ? '❚❚' : '▶'}
+                          </Text>
                         </Pressable>
                         <View style={styles.cardCopy}>
                           <Text style={styles.cardTitle}>{originLabel(audio.origin)}</Text>
@@ -293,8 +304,8 @@ export default function AudiosScreen() {
           <View style={styles.privacyCopy}>
             <Text style={styles.privacyTitle}>Somente neste aparelho</Text>
             <Text style={styles.privacyDescription}>
-              As cópias ficam no armazenamento privado do OtherSide. Não há conta, servidor nem envio
-              automático para qualquer lugar.
+              As cópias ficam no armazenamento privado do OtherSide. O envio ao Google Drive só
+              acontece se você conectar sua conta nos Ajustes.
             </Text>
           </View>
         </View>
