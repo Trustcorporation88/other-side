@@ -105,72 +105,163 @@ export async function ensureFolder(token: string): Promise<string | null> {
   }
 }
 
-/**
- * Lista os arquivos já na pasta e devolve o mapa { idDoItem -> idNoDrive } pela appProperty
- * "otherside". Serve para reconhecer o que já subiu (evita re-enviar) e manda duplicatas
- * para a lixeira do Drive (recuperável), mantendo uma cópia por item.
- */
-export async function listUploadedIds(token: string, folderId: string): Promise<Record<string, string>> {
-  const map: Record<string, string> = {};
-  const duplicates: string[] = [];
+export type DriveFileInfo = {
+  id: string;
+  name: string;
+  appId?: string;
+  parents: string[];
+  isFolder: boolean;
+};
+
+/** Lista todos os arquivos que o app criou no Drive (o escopo drive.file só enxerga os dele). */
+export async function listAppFiles(token: string): Promise<DriveFileInfo[]> {
+  const files: DriveFileInfo[] = [];
   let pageToken: string | undefined;
   try {
     do {
-      const query = `'${folderId}' in parents and trashed=false`;
       const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
       const res = await driveFetch(
         token,
-        `files?q=${encodeURIComponent(query)}&fields=nextPageToken,files(id,appProperties)&spaces=drive&pageSize=1000${pageParam}`,
+        `files?q=${encodeURIComponent('trashed=false')}&fields=nextPageToken,files(id,name,appProperties,parents,mimeType)&spaces=drive&pageSize=1000${pageParam}`,
       );
       if (!res.ok) break;
       const data = await res.json();
       for (const file of data.files ?? []) {
-        const itemId = file?.appProperties?.otherside;
-        if (!itemId || !file.id) continue;
-        if (map[itemId]) duplicates.push(file.id);
-        else map[itemId] = file.id;
+        if (!file.id) continue;
+        files.push({
+          id: file.id,
+          name: file.name ?? '',
+          appId: file?.appProperties?.otherside,
+          parents: file.parents ?? [],
+          isFolder: file.mimeType === 'application/vnd.google-apps.folder',
+        });
       }
       pageToken = data.nextPageToken;
     } while (pageToken);
-
-    for (const duplicateId of duplicates) {
-      try {
-        await driveFetch(token, `files/${duplicateId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ trashed: true }),
-        });
-      } catch (_error) {
-        // best effort
-      }
-    }
   } catch (_error) {
     // best effort
   }
-  return map;
+  return files;
 }
 
-/** Cria o arquivo (metadados) e envia os bytes. Devolve o id no Drive ou null. */
-export async function uploadLocalFile(
+const subFolderCache: Record<string, string> = {};
+
+/** Garante uma subpasta (ex.: "2025-09") dentro de outra pasta e devolve o id. */
+export async function ensureSubFolder(
   token: string,
-  params: { fileUri: string; name: string; mimeType: string; folderId: string; appId: string },
+  parentId: string,
+  name: string,
 ): Promise<string | null> {
+  const cacheKey = `${parentId}/${name}`;
+  if (subFolderCache[cacheKey]) return subFolderCache[cacheKey];
   try {
-    const metaRes = await driveFetch(token, 'files?fields=id', {
+    const query = `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const listRes = await driveFetch(
+      token,
+      `files?q=${encodeURIComponent(query)}&fields=files(id)&spaces=drive`,
+    );
+    const listData = await listRes.json();
+    if (Array.isArray(listData.files) && listData.files.length > 0) {
+      subFolderCache[cacheKey] = listData.files[0].id;
+      return subFolderCache[cacheKey];
+    }
+    const createRes = await driveFetch(token, 'files?fields=id', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: params.name,
-        parents: [params.folderId],
-        appProperties: { otherside: params.appId },
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentId],
       }),
+    });
+    const created = await createRes.json();
+    if (!created.id) return null;
+    subFolderCache[cacheKey] = created.id;
+    return created.id;
+  } catch (_error) {
+    return null;
+  }
+}
+
+/** Move um arquivo para outra pasta e, se informado, carimba a data de modificação. */
+export async function moveFileToFolder(
+  token: string,
+  fileId: string,
+  addParent: string,
+  removeParent?: string,
+  modifiedTime?: string,
+): Promise<boolean> {
+  try {
+    const remove = removeParent ? `&removeParents=${encodeURIComponent(removeParent)}` : '';
+    const res = await driveFetch(
+      token,
+      `files/${fileId}?addParents=${encodeURIComponent(addParent)}${remove}&fields=id`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modifiedTime ? { modifiedTime } : {}),
+      },
+    );
+    return res.ok;
+  } catch (_error) {
+    return false;
+  }
+}
+
+/** Manda um arquivo para a lixeira do Drive (recuperável). */
+export async function trashFile(token: string, fileId: string): Promise<void> {
+  try {
+    await driveFetch(token, `files/${fileId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed: true }),
+    });
+  } catch (_error) {
+    // best effort
+  }
+}
+
+/** Cria o arquivo (metadados) e envia os bytes. Carimba a data original. Devolve o id ou null. */
+export async function uploadLocalFile(
+  token: string,
+  params: {
+    fileUri: string;
+    name: string;
+    mimeType: string;
+    folderId: string;
+    appId: string;
+    modifiedTime?: string;
+  },
+): Promise<string | null> {
+  try {
+    const metadata: Record<string, unknown> = {
+      name: params.name,
+      parents: [params.folderId],
+      appProperties: { otherside: params.appId },
+    };
+    if (params.modifiedTime) metadata.modifiedTime = params.modifiedTime;
+
+    const metaRes = await driveFetch(token, 'files?fields=id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
     });
     if (!metaRes.ok) return null;
     const meta = await metaRes.json();
     if (!meta.id) return null;
 
     const uploaded = await uploadMedia(token, meta.id, params.fileUri, params.mimeType);
-    return uploaded ? meta.id : null;
+    if (!uploaded) return null;
+
+    // O envio de mídia pode redefinir a data; carimba de novo para ficar a data original.
+    if (params.modifiedTime) {
+      await driveFetch(token, `files/${meta.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modifiedTime: params.modifiedTime }),
+      });
+    }
+    return meta.id;
   } catch (_error) {
     return null;
   }

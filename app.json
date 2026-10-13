@@ -2,7 +2,7 @@
   "expo": {
     "name": "OtherSide",
     "slug": "other-side",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "otherside",
@@ -11,7 +11,7 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 14,
+      "versionCode": 15,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
