@@ -21,6 +21,7 @@ export type PreservedAudio = {
   origin: 'received' | 'sent' | 'unknown';
   originalModifiedAt: number;
   preservedAt: number;
+  kind: 'audio' | 'image';
 };
 
 type NativeEvents = {

@@ -7,7 +7,8 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 - Base Expo Router em TypeScript criada.
 - Primeira interface implementada com histórico vazio, status da captura e aba de ajustes.
 - Módulo Kotlin conectado ao histórico local e ao acesso às notificações.
-- Preservação de notas de voz do WhatsApp por observação da pasta de mídia, com aba de reprodução.
+- Preservação de notas de voz e **fotos** do WhatsApp por observação da pasta de mídia, com abas de reprodução (Áudios) e galeria (Fotos).
+- **Backup opcional no Google Drive** da própria pessoa (login com escopo `drive.file`); sobe áudios, fotos e o texto das mensagens para a pasta `OtherSide/`.
 - Validação em aparelho físico ainda necessária.
 
 ## Identidade

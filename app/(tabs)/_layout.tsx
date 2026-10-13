@@ -40,6 +40,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="fotos"
+        options={{
+          title: 'Fotos',
+          tabBarIcon: ({ color }) => <Text style={[styles.tabIcon, { color }]}>▢</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="two"
         options={{
           title: 'Ajustes',

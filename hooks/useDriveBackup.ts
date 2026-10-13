@@ -9,7 +9,7 @@ import {
   disconnectDrive,
   isDriveConnected,
 } from '@/lib/googleDrive';
-import { pendingAudioCount, syncNow, uploadedAudioCount } from '@/lib/driveBackup';
+import { pendingCount, syncNow, uploadedCount } from '@/lib/driveBackup';
 
 export function useDriveBackup() {
   const [connected, setConnected] = useState(false);
@@ -24,8 +24,8 @@ export function useDriveBackup() {
     const isConnected = isDriveConnected();
     setConnected(isConnected);
     setEmail(isConnected ? connectedEmail() : null);
-    setUploaded(uploadedAudioCount());
-    setPending(pendingAudioCount());
+    setUploaded(uploadedCount());
+    setPending(pendingCount());
   }, []);
 
   const sync = useCallback(async () => {

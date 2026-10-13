@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import { getPreservedAudioUri, type PreservedAudio } from '@otherside/notification-capture';
-import { usePreservedAudio } from '@/hooks/usePreservedAudio';
+import { usePreservedMedia } from '@/hooks/usePreservedMedia';
 
 const colors = {
   navy: '#071527',
@@ -60,8 +60,15 @@ function originLabel(origin: PreservedAudio['origin']): string {
 }
 
 export default function AudiosScreen() {
-  const { audios, supported, hasAccess, nativeAvailable, requestAccess, removeAudio, clearAll } =
-    usePreservedAudio();
+  const {
+    items: audios,
+    supported,
+    hasAccess,
+    nativeAvailable,
+    requestAccess,
+    remove: removeAudio,
+    clearAll,
+  } = usePreservedMedia('audio');
 
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
