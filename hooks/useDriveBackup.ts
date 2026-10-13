@@ -10,6 +10,7 @@ import {
   isDriveConnected,
 } from '@/lib/googleDrive';
 import { pendingCount, syncNow, uploadedCount } from '@/lib/driveBackup';
+import { registerDriveSync, unregisterDriveSync } from '@/lib/backgroundSync';
 
 export function useDriveBackup() {
   const [connected, setConnected] = useState(false);
@@ -50,7 +51,10 @@ export function useDriveBackup() {
     try {
       const ok = await connectDrive();
       refresh();
-      if (ok) await sync();
+      if (ok) {
+        void registerDriveSync();
+        await sync();
+      }
       return ok;
     } catch (_error) {
       return false;
@@ -64,6 +68,7 @@ export function useDriveBackup() {
     setBusy(true);
     try {
       await disconnectDrive();
+      void unregisterDriveSync();
     } finally {
       setBusy(false);
       refresh();
@@ -74,7 +79,10 @@ export function useDriveBackup() {
     if (!isNativeAvailable) return;
     configureGoogleDrive();
     refresh();
-    if (isDriveConnected()) void sync();
+    if (isDriveConnected()) {
+      void registerDriveSync();
+      void sync();
+    }
 
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {

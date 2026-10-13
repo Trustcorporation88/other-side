@@ -73,6 +73,7 @@ let syncing = false;
 
 export async function syncNow(
   onProgress?: (done: number, total: number) => void,
+  maxUploads?: number,
 ): Promise<SyncResult> {
   const empty: SyncResult = { uploaded: 0, failed: 0, pending: 0, messagesSynced: false };
   if (syncing) return empty;
@@ -113,6 +114,7 @@ export async function syncNow(
         // Salva a cada item: se o app fechar no meio, retoma de onde parou.
         writeRecord(record);
         onProgress?.(uploaded, toUpload.length);
+        if (maxUploads && uploaded >= maxUploads) break;
       } else {
         failed += 1;
       }
