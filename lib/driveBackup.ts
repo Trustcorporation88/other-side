@@ -5,6 +5,7 @@ import { getCapturedNotifications, getPreservedAudios } from '@otherside/notific
 import {
   ensureFolder,
   getAccessToken,
+  listUploadedIds,
   uploadLocalFile,
   uploadMedia,
 } from './googleDrive';
@@ -83,6 +84,17 @@ export async function syncNow(
     if (!folderId) return empty;
 
     const record = readRecord();
+    // Reconcilia com o Drive: reconhece o que já subiu (não re-envia) e limpa duplicatas.
+    const alreadyInDrive = await listUploadedIds(token, folderId);
+    let reconciled = false;
+    for (const [id, driveId] of Object.entries(alreadyInDrive)) {
+      if (record[id] !== driveId) {
+        record[id] = driveId;
+        reconciled = true;
+      }
+    }
+    if (reconciled) writeRecord(record);
+
     const toUpload = getPreservedAudios().filter((item) => !record[item.id]);
     let uploaded = 0;
     let failed = 0;
