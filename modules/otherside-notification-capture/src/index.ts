@@ -16,6 +16,7 @@ export type PreservedAudio = {
   fileName: string;
   localPath: string;
   uri: string;
+  thumbUri: string;
   sizeBytes: number;
   sourcePackage: string;
   origin: 'received' | 'sent' | 'unknown';

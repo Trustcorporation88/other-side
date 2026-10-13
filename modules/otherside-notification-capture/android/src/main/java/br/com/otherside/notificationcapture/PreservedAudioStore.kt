@@ -16,12 +16,14 @@ internal data class PreservedAudio(
   val originalModifiedAt: Long,
   val preservedAt: Long,
   val kind: String = KIND_AUDIO,
+  val thumbPath: String = "",
 ) {
   fun toMap(): Map<String, Any> = mapOf(
     "id" to id,
     "fileName" to fileName,
     "localPath" to localPath,
     "uri" to "file://$localPath",
+    "thumbUri" to if (thumbPath.isNotEmpty()) "file://$thumbPath" else "",
     "sizeBytes" to sizeBytes,
     "sourcePackage" to sourcePackage,
     "origin" to origin,
@@ -41,6 +43,7 @@ internal data class PreservedAudio(
     put("originalModifiedAt", originalModifiedAt)
     put("preservedAt", preservedAt)
     put("kind", kind)
+    put("thumbPath", thumbPath)
   }
 
   companion object {
@@ -61,6 +64,7 @@ internal data class PreservedAudio(
       originalModifiedAt = json.optLong("originalModifiedAt"),
       preservedAt = json.optLong("preservedAt"),
       kind = json.optString("kind", KIND_AUDIO),
+      thumbPath = json.optString("thumbPath", ""),
     )
   }
 }

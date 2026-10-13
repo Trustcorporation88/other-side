@@ -1,6 +1,8 @@
 package br.com.otherside.notificationcapture
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Environment
 import android.util.Log
@@ -21,6 +23,8 @@ import java.util.concurrent.Executors
 internal object WhatsAppAudioPreserver {
   private const val TAG = "OtherSideAudio"
   private const val DEST_DIR = "preserved_audio"
+  private const val THUMB_DIR = "preserved_thumb"
+  private const val THUMB_TARGET_PX = 320
 
   /** No primeiro start copiamos o que chegou recentemente; o resto é apenas observado ao vivo. */
   private const val INITIAL_SCAN_WINDOW_MS = 14L * 24 * 60 * 60 * 1000
@@ -115,6 +119,10 @@ internal object WhatsAppAudioPreserver {
       val dest = File(destDir, if (extension.isEmpty()) id else "$id.$extension")
       file.inputStream().use { input -> dest.outputStream().use(input::copyTo) }
 
+      val kind = kindOf(file.name)
+      // Miniatura só para imagens: mantém a galeria leve e sobrevive ao apagar o arquivo cheio.
+      val thumbPath = if (kind == PreservedAudio.KIND_IMAGE) writeThumbnail(context, dest, id).orEmpty() else ""
+
       val media = PreservedAudio(
         id = id,
         sourceKey = sourceKey,
@@ -125,7 +133,8 @@ internal object WhatsAppAudioPreserver {
         origin = originOf(file.absolutePath),
         originalModifiedAt = file.lastModified(),
         preservedAt = System.currentTimeMillis(),
-        kind = kindOf(file.name),
+        kind = kind,
+        thumbPath = thumbPath,
       )
       if (PreservedAudioStore.save(context, media)) {
         OtherSideNotificationCaptureModule.getInstance()?.emitAudioPreserved(media)
@@ -155,6 +164,32 @@ internal object WhatsAppAudioPreserver {
     // Caminhos do Android usam sempre '/'; normalizamos para o teste rodar também no host.
     val lower = path.replace('\\', '/').lowercase(Locale.ROOT)
     return if (lower.contains("/sent/")) PreservedAudio.ORIGIN_SENT else PreservedAudio.ORIGIN_RECEIVED
+  }
+
+  /** Gera uma miniatura JPEG pequena de uma imagem já copiada. Devolve o caminho ou null. */
+  private fun writeThumbnail(context: Context, imageFile: File, id: String): String? {
+    return try {
+      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      BitmapFactory.decodeFile(imageFile.absolutePath, bounds)
+      if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+      var sample = 1
+      while (bounds.outWidth / (sample * 2) >= THUMB_TARGET_PX &&
+        bounds.outHeight / (sample * 2) >= THUMB_TARGET_PX
+      ) {
+        sample *= 2
+      }
+
+      val options = BitmapFactory.Options().apply { inSampleSize = sample }
+      val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath, options) ?: return null
+      val thumbDir = File(context.filesDir, THUMB_DIR).apply { mkdirs() }
+      val thumbFile = File(thumbDir, "$id.jpg")
+      thumbFile.outputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out) }
+      bitmap.recycle()
+      thumbFile.absolutePath
+    } catch (_: Exception) {
+      null
+    }
   }
 
   private fun sourceKey(file: File): String =

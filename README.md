@@ -9,6 +9,7 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 - Módulo Kotlin conectado ao histórico local e ao acesso às notificações.
 - Preservação de notas de voz e **fotos** do WhatsApp por observação da pasta de mídia, com abas de reprodução (Áudios) e galeria (Fotos).
 - **Backup opcional no Google Drive** da própria pessoa (login com escopo `drive.file`); sobe áudios, fotos e o texto das mensagens para a pasta `OtherSide/`.
+- **Economia de memória**: itens já enviados ao Drive e com mais de 7 dias têm a cópia local apagada (fica só índice + miniatura); ao abrir um item antigo, o app baixa do Drive sob demanda, sempre dentro do próprio app.
 - Validação em aparelho físico ainda necessária.
 
 ## Identidade

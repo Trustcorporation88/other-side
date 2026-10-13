@@ -1,10 +1,21 @@
 import { useMemo, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { type PreservedAudio } from '@otherside/notification-capture';
 import { usePreservedMedia } from '@/hooks/usePreservedMedia';
+import { resolveMediaUri } from '@/lib/mediaResolver';
 
 const colors = {
   navy: '#071527',
@@ -32,6 +43,23 @@ export default function FotosScreen() {
   const { items, supported, hasAccess, nativeAvailable, requestAccess, remove, clearAll } =
     usePreservedMedia('image');
   const [selected, setSelected] = useState<PreservedAudio | null>(null);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
+
+  async function openPhoto(photo: PreservedAudio) {
+    setSelected(photo);
+    setViewerUri(null);
+    setViewerLoading(true);
+    const uri = await resolveMediaUri(photo);
+    setViewerLoading(false);
+    setViewerUri(uri);
+  }
+
+  function closeViewer() {
+    setSelected(null);
+    setViewerUri(null);
+    setViewerLoading(false);
+  }
 
   const groups = useMemo(() => {
     const startOfDay = (ts: number) => {
@@ -77,7 +105,7 @@ export default function FotosScreen() {
         text: 'Apagar',
         style: 'destructive',
         onPress: () => {
-          setSelected(null);
+          closeViewer();
           remove(photo.id);
         },
       },
@@ -160,9 +188,13 @@ export default function FotosScreen() {
                       key={photo.id}
                       accessibilityRole="imagebutton"
                       accessibilityLabel="Abrir foto"
-                      onPress={() => setSelected(photo)}
+                      onPress={() => void openPhoto(photo)}
                       style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}>
-                      <Image source={{ uri: photo.uri }} style={styles.thumbImage} resizeMode="cover" />
+                      <Image
+                        source={{ uri: photo.thumbUri || photo.uri }}
+                        style={styles.thumbImage}
+                        resizeMode="cover"
+                      />
                     </Pressable>
                   ))}
                 </View>
@@ -183,13 +215,13 @@ export default function FotosScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={selected != null} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
+      <Modal visible={selected != null} transparent animationType="fade" onRequestClose={closeViewer}>
         <View style={styles.viewer}>
           <View style={styles.viewerBar}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Fechar"
-              onPress={() => setSelected(null)}
+              onPress={closeViewer}
               style={({ pressed }) => [styles.viewerButton, pressed && styles.pressed]}>
               <Text style={styles.viewerButtonText}>✕</Text>
             </Pressable>
@@ -203,9 +235,22 @@ export default function FotosScreen() {
               </Pressable>
             )}
           </View>
-          {selected && (
-            <Image source={{ uri: selected.uri }} style={styles.viewerImage} resizeMode="contain" />
-          )}
+          <View style={styles.viewerBody}>
+            {viewerLoading ? (
+              <View style={styles.viewerCenter}>
+                <ActivityIndicator color={colors.blueSoft} />
+                <Text style={styles.viewerHint}>Baixando do Drive…</Text>
+              </View>
+            ) : viewerUri ? (
+              <Image source={{ uri: viewerUri }} style={styles.viewerImage} resizeMode="contain" />
+            ) : (
+              <View style={styles.viewerCenter}>
+                <Text style={styles.viewerHint}>
+                  Não foi possível abrir a foto — sem cópia no aparelho nem no Drive, ou sem conexão.
+                </Text>
+              </View>
+            )}
+          </View>
           {selected && (
             <Text style={styles.viewerMeta}>
               {formatMoment(selected.originalModifiedAt || selected.preservedAt)}
@@ -392,6 +437,9 @@ const styles = StyleSheet.create({
     width: 44,
   },
   viewerButtonText: { color: colors.white, fontSize: 20, fontWeight: '700' },
+  viewerBody: { flex: 1 },
+  viewerCenter: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center', paddingHorizontal: 32 },
+  viewerHint: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
   viewerImage: { flex: 1, width: '100%' },
   viewerMeta: {
     color: colors.muted,
