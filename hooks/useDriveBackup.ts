@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { isNativeAvailable } from '@otherside/notification-capture';
@@ -18,6 +18,8 @@ export function useDriveBackup() {
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const syncingRef = useRef(false);
 
   const refresh = useCallback(() => {
     if (!isNativeAvailable) return;
@@ -29,12 +31,15 @@ export function useDriveBackup() {
   }, []);
 
   const sync = useCallback(async () => {
-    if (!isNativeAvailable) return;
+    if (!isNativeAvailable || syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
     try {
-      await syncNow();
+      await syncNow((done, total) => setProgress({ done, total }));
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
+      setProgress(null);
       refresh();
     }
   }, [refresh]);
@@ -69,18 +74,16 @@ export function useDriveBackup() {
     if (!isNativeAvailable) return;
     configureGoogleDrive();
     refresh();
-    if (isDriveConnected()) {
-      void syncNow().finally(refresh);
-    }
+    if (isDriveConnected()) void sync();
 
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         refresh();
-        if (isDriveConnected()) void syncNow().finally(refresh);
+        if (isDriveConnected()) void sync();
       }
     });
     return () => subscription.remove();
-  }, [refresh]);
+  }, [refresh, sync]);
 
   return {
     available: isNativeAvailable,
@@ -89,6 +92,7 @@ export function useDriveBackup() {
     uploaded,
     pending,
     syncing,
+    progress,
     busy,
     connect,
     disconnect,
