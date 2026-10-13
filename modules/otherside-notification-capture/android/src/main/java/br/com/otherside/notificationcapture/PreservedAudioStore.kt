@@ -52,6 +52,7 @@ internal data class PreservedAudio(
     const val ORIGIN_UNKNOWN = "unknown"
     const val KIND_AUDIO = "audio"
     const val KIND_IMAGE = "image"
+    const val KIND_DOCUMENT = "document"
 
     fun fromJson(json: JSONObject): PreservedAudio = PreservedAudio(
       id = json.optString("id"),

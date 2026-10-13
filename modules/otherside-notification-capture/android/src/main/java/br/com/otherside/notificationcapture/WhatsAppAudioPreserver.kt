@@ -29,8 +29,23 @@ internal object WhatsAppAudioPreserver {
   /** No primeiro start copiamos o que chegou recentemente; o resto é apenas observado ao vivo. */
   private const val INITIAL_SCAN_WINDOW_MS = 14L * 24 * 60 * 60 * 1000
 
+  /** Teto de segurança para a enumeração do backup completo. */
+  private const val MAX_LIST = 20000
+
   private val AUDIO_EXTENSIONS = setOf("opus", "oga", "ogg", "m4a", "aac", "mp3", "amr", "wav")
   private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic")
+  // Documentos para o backup completo no Drive (sem vídeo, de propósito).
+  private val DOCUMENT_EXTENSIONS = setOf(
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "odt", "zip",
+  )
+
+  // Pastas usadas só pelo backup completo (enumeração, sem copiar).
+  private val DOCUMENT_RELATIVE_ROOTS = listOf(
+    "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents",
+    "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Documents",
+    "WhatsApp/Media/WhatsApp Documents",
+    "WhatsApp Business/Media/WhatsApp Documents",
+  )
 
   private val CANDIDATE_RELATIVE_ROOTS = listOf(
     "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes",
@@ -150,10 +165,20 @@ internal object WhatsAppAudioPreserver {
   internal fun isImage(name: String): Boolean =
     name.substringAfterLast('.', "").lowercase(Locale.ROOT) in IMAGE_EXTENSIONS
 
+  internal fun isDocument(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase(Locale.ROOT) in DOCUMENT_EXTENSIONS
+
+  /** Observador ao vivo: só áudio e imagem (copiados localmente para recuperar apagados). */
   internal fun isMedia(name: String): Boolean = isAudio(name) || isImage(name)
 
-  internal fun kindOf(name: String): String =
-    if (isImage(name)) PreservedAudio.KIND_IMAGE else PreservedAudio.KIND_AUDIO
+  /** Backup completo no Drive: áudio, imagem e documento (sem vídeo). */
+  internal fun isAnyMedia(name: String): Boolean = isMedia(name) || isDocument(name)
+
+  internal fun kindOf(name: String): String = when {
+    isImage(name) -> PreservedAudio.KIND_IMAGE
+    isDocument(name) -> PreservedAudio.KIND_DOCUMENT
+    else -> PreservedAudio.KIND_AUDIO
+  }
 
   internal fun packageOf(path: String): String = when {
     path.contains("com.whatsapp.w4b") -> "com.whatsapp.w4b"
@@ -190,6 +215,45 @@ internal object WhatsAppAudioPreserver {
     } catch (_: Exception) {
       null
     }
+  }
+
+  /**
+   * Enumera TODA a mídia (áudio, imagem, documento; sem vídeo) presente no disco — SEM copiar.
+   * Base do backup completo no Drive: os arquivos são enviados direto da pasta do WhatsApp.
+   */
+  fun listAllMedia(context: Context): List<Map<String, Any>> {
+    if (!isSupported()) return emptyList()
+    @Suppress("DEPRECATION")
+    val base = Environment.getExternalStorageDirectory() ?: return emptyList()
+    val roots = (CANDIDATE_RELATIVE_ROOTS + DOCUMENT_RELATIVE_ROOTS)
+      .map { File(base, it) }
+      .filter { it.isDirectory }
+
+    val out = ArrayList<Map<String, Any>>()
+    val seen = HashSet<String>()
+    for (root in roots) {
+      if (out.size >= MAX_LIST) break
+      runCatching {
+        root.walkTopDown()
+          .filter { it.isFile && it.length() > 0L && isAnyMedia(it.name) }
+          .forEach { file ->
+            if (out.size >= MAX_LIST) return@forEach
+            val id = hash(sourceKey(file))
+            if (!seen.add(id)) return@forEach
+            out.add(
+              mapOf(
+                "id" to id,
+                "uri" to "file://${file.absolutePath}",
+                "fileName" to file.name,
+                "kind" to kindOf(file.name),
+                "originalModifiedAt" to file.lastModified(),
+                "sizeBytes" to file.length(),
+              ),
+            )
+          }
+      }
+    }
+    return out
   }
 
   private fun sourceKey(file: File): String =
