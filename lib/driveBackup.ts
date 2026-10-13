@@ -4,15 +4,19 @@ import { getCapturedNotifications, getPreservedAudios } from '@otherside/notific
 
 import {
   ensureFolder,
+  ensureSubFolder,
   getAccessToken,
-  listUploadedIds,
+  listAppFiles,
+  moveFileToFolder,
+  trashFile,
   uploadLocalFile,
   uploadMedia,
 } from './googleDrive';
 
 // Registro local do que já subiu: id do item -> id do arquivo no Drive.
 const RECORD_NAME = 'drive-uploads.json';
-const MESSAGES_KEY = '__mensagens_json__';
+// Mesmo valor da appProperty "otherside" do mensagens.json, para reconciliar certo.
+const MESSAGES_KEY = 'mensagens';
 
 const FILE_MIME: Record<string, string> = {
   opus: 'audio/ogg',
@@ -35,6 +39,21 @@ const FILE_MIME: Record<string, string> = {
 function mimeForFile(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
   return FILE_MIME[ext] ?? 'application/octet-stream';
+}
+
+/** Extrai a data (UTC) do nome do arquivo do WhatsApp (ex.: IMG-20250915-WA0012.jpg). */
+function dateFromName(fileName: string): Date | null {
+  const match = fileName.match(/(\d{4})(\d{2})(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function monthKeyOf(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function recordFile(): File {
@@ -85,28 +104,74 @@ export async function syncNow(
     if (!folderId) return empty;
 
     const record = readRecord();
-    // Reconcilia com o Drive: reconhece o que já subiu (não re-envia) e limpa duplicatas.
-    const alreadyInDrive = await listUploadedIds(token, folderId);
-    let reconciled = false;
-    for (const [id, driveId] of Object.entries(alreadyInDrive)) {
-      if (record[id] !== driveId) {
-        record[id] = driveId;
-        reconciled = true;
+
+    // 1. Lê o que o app já tem no Drive (arquivos + subpastas de mês).
+    const driveFiles = await listAppFiles(token);
+    const monthFolders: Record<string, string> = {};
+    for (const file of driveFiles) {
+      if (file.isFolder && /^\d{4}-\d{2}$/.test(file.name) && file.parents.includes(folderId)) {
+        monthFolders[file.name] = file.id;
       }
     }
-    if (reconciled) writeRecord(record);
 
+    const rootFolderId: string = folderId;
+    const driveToken: string = token;
+    async function monthFolderFor(date: Date): Promise<string | null> {
+      const key = monthKeyOf(date);
+      const cached = monthFolders[key];
+      if (cached) return cached;
+      const created = await ensureSubFolder(driveToken, rootFolderId, key);
+      if (created) monthFolders[key] = created;
+      return created;
+    }
+
+    // 2. Reconcilia o registro, limpa duplicatas e migra para a subpasta do mês + carimba a data.
+    const seen = new Set<string>();
+    const migrateCap = maxUploads ? 20 : 2000;
+    let migrated = 0;
+    let recordChanged = false;
+
+    for (const file of driveFiles) {
+      if (file.isFolder || !file.appId) continue;
+      if (seen.has(file.appId)) {
+        await trashFile(token, file.id); // duplicata: mantém uma, manda a extra pra lixeira
+        continue;
+      }
+      seen.add(file.appId);
+      if (record[file.appId] !== file.id) {
+        record[file.appId] = file.id;
+        recordChanged = true;
+      }
+
+      if (migrated >= migrateCap) continue;
+      const date = dateFromName(file.name);
+      if (!date) continue; // sem data no nome (ex.: mensagens.json) fica na raiz
+      const targetId = await monthFolderFor(date);
+      if (targetId && !file.parents.includes(targetId)) {
+        const removeParent = file.parents.find((parent) => parent !== targetId);
+        if (await moveFileToFolder(token, file.id, targetId, removeParent, date.toISOString())) {
+          migrated += 1;
+        }
+      }
+    }
+    if (recordChanged) writeRecord(record);
+
+    // 3. Envia os itens que ainda não estão no Drive, direto na subpasta do mês.
     const toUpload = getPreservedAudios().filter((item) => !record[item.id]);
     let uploaded = 0;
     let failed = 0;
 
     for (const item of toUpload) {
+      const date = dateFromName(item.fileName) ?? new Date(item.originalModifiedAt || item.preservedAt);
+      const targetId = await monthFolderFor(date);
+      const modifiedTime = new Date(item.originalModifiedAt || date.getTime()).toISOString();
       const driveId = await uploadLocalFile(token, {
         fileUri: item.uri,
         name: item.fileName,
         mimeType: mimeForFile(item.fileName),
-        folderId,
+        folderId: targetId ?? folderId,
         appId: item.id,
+        modifiedTime,
       });
       if (driveId) {
         record[item.id] = driveId;
