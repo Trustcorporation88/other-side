@@ -125,8 +125,8 @@ internal object WhatsAppAudioPreserver {
   private fun preserve(context: Context, file: File) {
     try {
       if (!isMedia(file.name) || !file.isFile || file.length() == 0L) return
+      if (PreservedAudioStore.hasSameFile(context, file.absolutePath, file.length())) return
       val sourceKey = sourceKey(file)
-      if (PreservedAudioStore.has(context, sourceKey)) return
 
       val destDir = File(context.filesDir, DEST_DIR).apply { mkdirs() }
       val id = hash(sourceKey)
@@ -256,8 +256,19 @@ internal object WhatsAppAudioPreserver {
     return out
   }
 
-  private fun sourceKey(file: File): String =
-    "${file.absolutePath}|${file.length()}|${file.lastModified()}"
+  /**
+   * Identidade estável: caminho + tamanho. A data de modificação fica de fora porque o
+   * WhatsApp regrava o mesmo arquivo (o lastModified muda e o tamanho não) e isso fazia
+   * o backup enviar a mesma nota de voz várias vezes. Chaves antigas, com o horário no
+   * final, ainda contam como o mesmo arquivo.
+   */
+  private fun sourceKey(file: File): String = "${file.absolutePath}|${file.length()}"
+
+  internal fun sameSourceFile(storedKey: String, path: String, size: Long): Boolean {
+    if (path.isEmpty() || size <= 0L || storedKey.isEmpty()) return false
+    if (storedKey == "$path|$size") return true
+    return storedKey.startsWith("$path|$size|")
+  }
 
   private fun hash(value: String): String {
     val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))

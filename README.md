@@ -8,8 +8,9 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 - Primeira interface implementada com histórico vazio, status da captura e aba de ajustes.
 - Módulo Kotlin conectado ao histórico local e ao acesso às notificações.
 - Preservação de notas de voz e **fotos** do WhatsApp por observação da pasta de mídia, com abas de reprodução (Áudios) e galeria (Fotos).
-- **Backup opcional no Google Drive** da própria pessoa (login com escopo `drive.file`); sobe áudios, fotos e o texto das mensagens para a pasta `OtherSide/`, organizados em **subpastas por mês** (`OtherSide/AAAA-MM/`) com a data original carimbada em cada arquivo, e continua **em segundo plano** (melhor-esforço). Reconcilia com o Drive para não duplicar.
-- **Backup completo do histórico**: além dos itens recentes preservados, o app envia ao Drive TODA a mídia que está no celular (áudios, fotos e **documentos/PDF**, sem vídeo), subindo direto da pasta do WhatsApp (sem copiar para o app, para não encher a memória).
+- **Backup opcional no Google Drive** da própria pessoa (login com escopo `drive.file`); sobe áudios, fotos e o texto das mensagens para a pasta `OtherSide/`, organizados em **subpastas por mês** (`OtherSide/AAAA-MM/`) com a data original carimbada em cada arquivo, e continua **em segundo plano** (melhor-esforço). Um arquivo com o mesmo nome e o mesmo tamanho não é enviado de novo. Cópias que já existem no Drive não são apagadas pelo app.
+- **Backup da galeria**: fotos e vídeos de `DCIM/Camera` vão para `OtherSide/AAAA-MM/Fotos`. Dá para incluir também as imagens do WhatsApp que aparecem na galeria. Fotos novas sobem sozinhas; em Ajustes há o envio inicial das que já estão no aparelho. Por padrão a galeria espera Wi-Fi, e dá para exigir carregador.
+- **Backup completo do histórico**: além dos itens recentes preservados, o app envia ao Drive TODA a mídia que está no celular (áudios, fotos e **documentos/PDF**, sem vídeo do WhatsApp), subindo direto da pasta do WhatsApp (sem copiar para o app, para não encher a memória). Vídeos da câmera entram só pelo backup da galeria.
 - **Economia de memória**: itens já enviados ao Drive e com mais de 7 dias têm a cópia local apagada (fica só índice + miniatura); ao abrir um item antigo, o app baixa do Drive sob demanda, sempre dentro do próprio app.
 - Validação em aparelho físico ainda necessária.
 
@@ -31,6 +32,41 @@ npm run web
 ```
 
 A captura real exigirá um build Android customizado com prebuild ou EAS. O Expo Go não incorpora o `NotificationListenerService` próprio do aplicativo.
+
+## Gerar e instalar o APK
+
+O APK de uso no aparelho é o **release**: ele leva o JavaScript dentro do pacote e abre sem o Metro. É preciso Node.js 22, JDK 17 e o Android SDK. Na primeira vez o `prebuild` cria a pasta `android/` (ela não vai para o git).
+
+```bash
+npm ci
+npx expo prebuild --platform android --no-install
+cd android
+./gradlew :app:assembleRelease
+```
+
+O arquivo fica em `android/app/build/outputs/apk/release/app-release.apk`. Para instalar por cima da versão anterior, com o aparelho em depuração USB:
+
+```bash
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+A assinatura é a chave de teste que o Expo gera no prebuild. Serve para uso privado neste aparelho. Não é assinatura de loja e não deve ir para o Google Play. Se o `adb install` recusar o pacote, desinstale a versão antiga assinada com outra chave e instale de novo (isso apaga o histórico local do app).
+
+Depois de instalar: abra **Ajustes**, conecte o Google Drive e conceda **fotos e vídeos**. O backup da câmera começa no Wi-Fi. **Enviar fotos existentes agora** manda o que já está em `DCIM/Camera`. Fotos novas seguem sozinhas, em segundo plano, enquanto o Android deixar a tarefa rodar (o sistema pode atrasar; não é um horário fixo).
+
+## Permissões Android
+
+| Permissão | Para quê |
+| --- | --- |
+| Acesso às notificações | Texto das mensagens do WhatsApp |
+| `MANAGE_EXTERNAL_STORAGE` (acesso a todos os arquivos) | Copiar notas de voz e mídia da pasta protegida do WhatsApp. Android 11+ |
+| `READ_MEDIA_AUDIO` | Áudio do WhatsApp no Android 13+ |
+| `READ_MEDIA_IMAGES` e `READ_MEDIA_VIDEO` | Galeria (`DCIM/Camera` e, se ligado, imagens do WhatsApp) via MediaStore. Android 13+ |
+| `READ_MEDIA_VISUAL_USER_SELECTED` | Android 14, quando a pessoa libera só algumas fotos. O app envia só essas |
+| `READ_EXTERNAL_STORAGE` | Leitura de mídia no Android 12 e anteriores |
+| `ACCESS_NETWORK_STATE` | Saber se a rede é Wi-Fi antes de subir a galeria |
+
+Áudios, documentos e `mensagens.json` não esperam Wi-Fi. Essa trava vale só para a galeria.
 
 ## APK autônomo de teste
 
@@ -56,5 +92,6 @@ Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de p
 
 ```bash
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
+node --experimental-strip-types --test scripts/test_upload_identity.ts
 python3 scripts/verify_standalone_apk.py /caminho/app-release.apk
 ```

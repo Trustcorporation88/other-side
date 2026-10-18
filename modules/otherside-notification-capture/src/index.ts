@@ -34,9 +34,21 @@ export type WhatsAppMediaItem = {
   sizeBytes: number;
 };
 
+export type GalleryBackupItem = {
+  id: string;
+  uri: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  takenAt: number;
+  relativePath: string;
+  source: 'camera' | 'whatsapp';
+};
+
 type NativeEvents = {
   onNotificationCaptured: (event: CapturedNotification) => void;
   onAudioPreserved: (event: PreservedAudio) => void;
+  onGalleryChanged: (event: { at: number }) => void;
 };
 
 type NativeModule = {
@@ -55,6 +67,13 @@ type NativeModule = {
   startAudioPreservation: () => void;
   getPreservedAudios: () => PreservedAudio[];
   getAllWhatsAppMedia: () => WhatsAppMediaItem[];
+  hasGalleryAccess: () => boolean;
+  isOnWifi: () => boolean;
+  isCharging: () => boolean;
+  startGalleryWatch: () => void;
+  stopGalleryWatch: () => void;
+  requestGalleryAccess: () => Promise<{ granted?: boolean } | null>;
+  getGalleryBackupItems: (includeWhatsApp: boolean) => Promise<GalleryBackupItem[]>;
   getPreservedAudioUri: (id: string) => string | null;
   deletePreservedAudio: (id: string) => void;
   clearPreservedAudios: () => void;
@@ -165,6 +184,71 @@ export function getAllWhatsAppMedia(): WhatsAppMediaItem[] {
     return nativeModule?.getAllWhatsAppMedia() ?? [];
   } catch (_error) {
     return [];
+  }
+}
+
+export function hasGalleryAccess(): boolean {
+  try {
+    return nativeModule?.hasGalleryAccess() ?? false;
+  } catch (_error) {
+    return false;
+  }
+}
+
+export function isOnWifi(): boolean {
+  try {
+    return nativeModule?.isOnWifi() ?? false;
+  } catch (_error) {
+    return false;
+  }
+}
+
+export function isCharging(): boolean {
+  try {
+    return nativeModule?.isCharging() ?? false;
+  } catch (_error) {
+    return false;
+  }
+}
+
+export function startGalleryWatch(): void {
+  try {
+    nativeModule?.startGalleryWatch();
+  } catch (_error) {
+    // Observar a galeria é best effort.
+  }
+}
+
+export function stopGalleryWatch(): void {
+  try {
+    nativeModule?.stopGalleryWatch();
+  } catch (_error) {
+    // Parar o observador é best effort.
+  }
+}
+
+export async function requestGalleryAccess(): Promise<boolean> {
+  try {
+    await nativeModule?.requestGalleryAccess();
+  } catch (_error) {
+    return hasGalleryAccess();
+  }
+  return hasGalleryAccess();
+}
+
+export async function getGalleryBackupItems(includeWhatsApp: boolean): Promise<GalleryBackupItem[]> {
+  try {
+    return (await nativeModule?.getGalleryBackupItems(includeWhatsApp)) ?? [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+export function addGalleryChangedListener(listener: () => void) {
+  try {
+    return nativeModule?.addListener('onGalleryChanged', () => listener()) ?? { remove: () => undefined };
+  } catch (_error) {
+    return { remove: () => undefined };
   }
 }
 

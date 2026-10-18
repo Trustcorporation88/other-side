@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 import '@/lib/backgroundSync';
 
+import { DriveBackupRuntime } from '@/components/DriveBackupRuntime';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export {
@@ -31,6 +32,7 @@ function RootLayoutNav() {
   return (
     <SafeAreaProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <DriveBackupRuntime />
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

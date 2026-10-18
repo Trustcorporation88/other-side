@@ -7,15 +7,20 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import expo.modules.interfaces.permissions.Permissions
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class OtherSideNotificationCaptureModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("OtherSideNotificationCapture")
 
-    Events("onNotificationCaptured", "onAudioPreserved")
+    Events("onNotificationCaptured", "onAudioPreserved", "onGalleryChanged")
 
     OnCreate {
       instance = this@OtherSideNotificationCaptureModule
@@ -23,6 +28,7 @@ class OtherSideNotificationCaptureModule : Module() {
     }
 
     OnDestroy {
+      GalleryWatch.stop(appContext.reactContext)
       if (instance === this@OtherSideNotificationCaptureModule) instance = null
     }
 
@@ -93,6 +99,46 @@ class OtherSideNotificationCaptureModule : Module() {
       WhatsAppAudioPreserver.listAllMedia(context)
     }
 
+    Function("hasGalleryAccess") {
+      val context = appContext.reactContext ?: return@Function false
+      GalleryBackup.hasAccess(context)
+    }
+
+    Function("isOnWifi") {
+      val context = appContext.reactContext ?: return@Function false
+      GalleryBackup.isOnWifi(context)
+    }
+
+    Function("isCharging") {
+      val context = appContext.reactContext ?: return@Function false
+      GalleryBackup.isCharging(context)
+    }
+
+    Function("startGalleryWatch") {
+      appContext.reactContext?.let(GalleryWatch::start)
+      Unit
+    }
+
+    Function("stopGalleryWatch") {
+      GalleryWatch.stop(appContext.reactContext)
+      Unit
+    }
+
+    AsyncFunction("requestGalleryAccess") { promise: Promise ->
+      Permissions.askForPermissionsWithPermissionsManager(
+        appContext.permissions,
+        promise,
+        *GalleryBackup.permissionNames(),
+      )
+    }
+
+    AsyncFunction("getGalleryBackupItems") Coroutine { includeWhatsApp: Boolean ->
+      val context = appContext.reactContext ?: return@Coroutine emptyList<Map<String, Any>>()
+      withContext(Dispatchers.IO) {
+        GalleryBackup.list(context, includeWhatsApp)
+      }
+    }
+
     Function("getPreservedAudios") {
       val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any>>()
       PreservedAudioStore.getAll(context).map { it.toMap() }
@@ -125,6 +171,10 @@ class OtherSideNotificationCaptureModule : Module() {
 
   internal fun emitAudioPreserved(audio: PreservedAudio) {
     sendEvent("onAudioPreserved", audio.toMap())
+  }
+
+  internal fun emitGalleryChanged() {
+    sendEvent("onGalleryChanged", mapOf("at" to System.currentTimeMillis()))
   }
 
   companion object {

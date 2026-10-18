@@ -1,4 +1,5 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,6 +20,7 @@ const colors = {
 
 export default function SettingsScreen() {
   const { listenerEnabled, nativeAvailable, refresh } = useNotificationCapture();
+  const drive = useDriveBackup();
 
   function explainNativeAccess() {
     if (!nativeAvailable) {
@@ -76,7 +78,8 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.sectionLabel}>BACKUP</Text>
-        <DriveBackupCard />
+        <DriveBackupCard drive={drive} />
+        <GalleryBackupCard drive={drive} />
 
         <Text style={styles.sectionLabel}>PRIVACIDADE</Text>
         <View style={styles.privacyCard}>
@@ -99,14 +102,14 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.version}>
-          OtherSide 1.0.0 · {nativeAvailable ? 'módulo nativo conectado' : 'aguardando APK Android'}
+          OtherSide {Constants.expoConfig?.version ?? '1.0.16'} · {nativeAvailable ? 'módulo nativo conectado' : 'aguardando APK Android'}
         </Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function DriveBackupCard() {
+function DriveBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup> }) {
   const {
     available,
     connected,
@@ -119,7 +122,7 @@ function DriveBackupCard() {
     connect,
     disconnect,
     sync,
-  } = useDriveBackup();
+  } = drive;
 
   async function handleConnect() {
     if (!available) {
@@ -165,8 +168,8 @@ function DriveBackupCard() {
           ? 'Disponível no APK do OtherSide. Conecte sua conta para enviar áudios, fotos e mensagens ao seu Google Drive.'
           : connected
             ? syncing && progress
-              ? `Enviando para o seu Drive… ${progress.done} de ${progress.total}. Melhor no Wi-Fi.`
-              : `Áudios, fotos e mensagens vão para a pasta "OtherSide" no seu Drive. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
+              ? `Enviando para o seu Drive… ${progress.done} de ${progress.total}.`
+              : `Áudios, fotos e mensagens vão para a pasta "OtherSide" no seu Drive, um arquivo por nome e tamanho. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
             : 'Conecte sua conta do Google para guardar os áudios, fotos e mensagens no seu próprio Drive (pasta "OtherSide"). Só o app acessa esses arquivos.'}
       </Text>
 
@@ -206,6 +209,163 @@ function DriveBackupCard() {
           <Text style={styles.secondaryButtonArrow}>↗</Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+function GalleryBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup> }) {
+  const {
+    available,
+    connected,
+    syncing,
+    progress,
+    settings,
+    galleryAccess,
+    gallerySkipped,
+    backfill,
+    requestGalleryPermission,
+    setGalleryEnabled,
+    setIncludeWhatsAppImages,
+    setWifiOnly,
+    setRequireCharging,
+  } = drive;
+
+  async function handleBackfill() {
+    if (!available || !connected) {
+      Alert.alert('Conecte o Drive', 'O backup da galeria usa a mesma pasta OtherSide do Google Drive.');
+      return;
+    }
+    if (!settings.galleryEnabled) {
+      Alert.alert('Backup da galeria desligado', 'Ligue “Câmera (DCIM/Camera)” para enviar as fotos.');
+      return;
+    }
+    if (!galleryAccess) {
+      const granted = await requestGalleryPermission();
+      if (!granted) {
+        Alert.alert(
+          'Sem acesso às fotos',
+          'O Android precisa da permissão de fotos e vídeos. No Android 14 dá para escolher só algumas; o app envia só essas.',
+        );
+        return;
+      }
+    }
+    const result = await backfill();
+    if (!result) return;
+    if (result.gallerySkipped === 'wifi') {
+      Alert.alert('Aguardando Wi-Fi', 'O backup da galeria está em “somente Wi-Fi”. Conecte uma rede Wi-Fi ou desligue essa opção.');
+      return;
+    }
+    if (result.gallerySkipped === 'charging') {
+      Alert.alert('Aguardando carregador', 'O backup da galeria está marcado para rodar só carregando.');
+    }
+  }
+
+  const status = !available
+    ? 'APK Android necessário'
+    : !connected
+      ? 'Conecte o Drive acima'
+      : !settings.galleryEnabled
+        ? 'Desligado'
+        : !galleryAccess
+          ? 'Permissão de fotos pendente'
+          : gallerySkipped === 'wifi'
+            ? 'Aguardando Wi-Fi'
+            : gallerySkipped === 'charging'
+              ? 'Aguardando carregador'
+              : 'Ativo';
+
+  return (
+    <View style={[styles.card, styles.galleryCard]}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardIcon}>
+          <View style={styles.cardIconDot} />
+        </View>
+        <View style={styles.cardHeaderCopy}>
+          <Text style={styles.cardTitle}>Backup da galeria</Text>
+          <Text style={[styles.cardSubtitle, connected && settings.galleryEnabled && galleryAccess && styles.cardSubtitleActive]}>
+            {status}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.cardDescription}>
+        Fotos e vídeos de DCIM/Camera vão para OtherSide/AAAA-MM/Fotos, no mês em que foram feitos. Fotos novas sobem sozinhas. O que já está no Drive, com o mesmo nome e tamanho, não é enviado de novo.
+      </Text>
+
+      <SettingToggle
+        label="Câmera (DCIM/Camera)"
+        value={settings.galleryEnabled}
+        disabled={!available}
+        onChange={(value) => {
+          setGalleryEnabled(value);
+          if (value && !galleryAccess) void requestGalleryPermission();
+        }}
+      />
+      <SettingToggle
+        label="Imagens do WhatsApp na pasta Fotos"
+        value={settings.includeWhatsAppImages}
+        disabled={!available || !settings.galleryEnabled}
+        onChange={setIncludeWhatsAppImages}
+      />
+      <SettingToggle
+        label="Galeria só no Wi-Fi"
+        value={settings.wifiOnly}
+        disabled={!available || !settings.galleryEnabled}
+        onChange={setWifiOnly}
+      />
+      <SettingToggle
+        label="Galeria só carregando"
+        value={settings.requireCharging}
+        disabled={!available || !settings.galleryEnabled}
+        onChange={setRequireCharging}
+      />
+
+      {connected && settings.galleryEnabled && !galleryAccess && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void requestGalleryPermission()}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+          <Text style={styles.secondaryButtonText}>Permitir fotos e vídeos</Text>
+          <Text style={styles.secondaryButtonArrow}>↗</Text>
+        </Pressable>
+      )}
+
+      <Pressable
+        accessibilityRole="button"
+        disabled={!available || !connected || syncing || !settings.galleryEnabled}
+        onPress={() => void handleBackfill()}
+        style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+        <Text style={styles.secondaryButtonText}>
+          {syncing && progress ? `Enviando fotos ${progress.done}/${progress.total}…` : 'Enviar fotos existentes agora'}
+        </Text>
+        <Text style={styles.secondaryButtonArrow}>↑</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function SettingToggle({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={styles.toggleRow}>
+      <Text style={[styles.toggleLabel, disabled && styles.toggleLabelDisabled]}>{label}</Text>
+      <Switch
+        accessibilityRole="switch"
+        accessibilityLabel={label}
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+        trackColor={{ false: '#1C3E63', true: '#2F6FE0' }}
+        thumbColor={value ? '#F4F7FB' : '#A8B8CA'}
+      />
     </View>
   );
 }
@@ -263,6 +423,25 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     padding: 18,
+  },
+  galleryCard: {
+    marginTop: 14,
+  },
+  toggleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    gap: 12,
+  },
+  toggleLabel: {
+    color: colors.white,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  toggleLabelDisabled: {
+    color: '#6F849C',
   },
   cardHeader: {
     alignItems: 'center',
