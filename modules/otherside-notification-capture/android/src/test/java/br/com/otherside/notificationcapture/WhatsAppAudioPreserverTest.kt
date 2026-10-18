@@ -75,4 +75,14 @@ class WhatsAppAudioPreserverTest {
 
     assertEquals(PreservedAudio.KIND_DOCUMENT, WhatsAppAudioPreserver.kindOf("DOC-20251012-WA0004.pdf"))
   }
+
+  @Test
+  fun `a mesma nota de voz continua a mesma se so a data de modificacao mudar`() {
+    val path = "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes/202610/AUD-20261014-WA0007.opus"
+    val legacy = "$path|398298|1728000000000"
+    assertTrue(WhatsAppAudioPreserver.sameSourceFile(legacy, path, 398298))
+    assertTrue(WhatsAppAudioPreserver.sameSourceFile("$path|398298", path, 398298))
+    assertFalse(WhatsAppAudioPreserver.sameSourceFile(legacy, path, 10))
+    assertFalse(WhatsAppAudioPreserver.sameSourceFile(legacy, "$path.outro", 398298))
+  }
 }

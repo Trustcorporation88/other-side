@@ -3,11 +3,16 @@ const { withAndroidManifest } = require('@expo/config-plugins');
 const SERVICE_NAME = 'br.com.otherside.notificationcapture.OtherSideNotificationCaptureService';
 const LISTENER_ACTION = 'android.service.notification.NotificationListenerService';
 
-// Permissões necessárias para ler a pasta de mídia do WhatsApp e preservar as notas de voz.
+// Permissões para a pasta do WhatsApp e para o backup da galeria (MediaStore).
 const PERMISSIONS = [
   { name: 'android.permission.MANAGE_EXTERNAL_STORAGE' },
   { name: 'android.permission.READ_MEDIA_AUDIO' },
+  { name: 'android.permission.READ_MEDIA_IMAGES' },
+  { name: 'android.permission.READ_MEDIA_VIDEO' },
+  // Android 14 concede esta quando a pessoa escolhe só algumas fotos. Não pedimos no diálogo.
+  { name: 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED' },
   { name: 'android.permission.READ_EXTERNAL_STORAGE', maxSdkVersion: '32' },
+  { name: 'android.permission.ACCESS_NETWORK_STATE' },
 ];
 
 function addUsesPermission(manifest, { name, maxSdkVersion }) {

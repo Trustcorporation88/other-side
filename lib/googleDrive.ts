@@ -78,20 +78,54 @@ function driveFetch(token: string, path: string, init?: RequestInit): Promise<Re
 
 let cachedFolderId: string | null = null;
 
+type ListedFolder = { id: string; createdTime: string | null };
+
+/** A mais antiga, para duas pastas com o mesmo nome não alternarem a cada sync. */
+function oldestFolder(folders: ListedFolder[]): ListedFolder | null {
+  if (folders.length === 0) return null;
+  return [...folders].sort((left, right) => {
+    const leftTime = left.createdTime ?? '';
+    const rightTime = right.createdTime ?? '';
+    if (leftTime !== rightTime) return leftTime < rightTime ? -1 : 1;
+    return left.id < right.id ? -1 : 1;
+  })[0];
+}
+
+async function findFolders(token: string, query: string): Promise<ListedFolder[] | null> {
+  const fields = 'files(id,createdTime)';
+  const ordered = await driveFetch(
+    token,
+    `files?q=${encodeURIComponent(query)}&orderBy=createdTime&fields=${fields}&spaces=drive&pageSize=100`,
+  );
+  const response = ordered.ok
+    ? ordered
+    : await driveFetch(
+        token,
+        `files?q=${encodeURIComponent(query)}&fields=${fields}&spaces=drive&pageSize=100`,
+      );
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!Array.isArray(data.files)) return [];
+  return data.files
+    .filter((file: { id?: string }) => Boolean(file.id))
+    .map((file: { id: string; createdTime?: string }) => ({
+      id: file.id,
+      createdTime: typeof file.createdTime === 'string' ? file.createdTime : null,
+    }));
+}
+
 /** Garante a pasta "OtherSide" no Drive do usuário e devolve o id dela. */
 export async function ensureFolder(token: string): Promise<string | null> {
   if (cachedFolderId) return cachedFolderId;
   try {
     const query = `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const listRes = await driveFetch(
-      token,
-      `files?q=${encodeURIComponent(query)}&fields=files(id)&spaces=drive`,
-    );
-    const listData = await listRes.json();
-    if (Array.isArray(listData.files) && listData.files.length > 0) {
-      cachedFolderId = listData.files[0].id;
+    const existing = await findFolders(token, query);
+    const chosen = existing ? oldestFolder(existing) : null;
+    if (chosen) {
+      cachedFolderId = chosen.id;
       return cachedFolderId;
     }
+    if (existing == null) return null;
     const createRes = await driveFetch(token, 'files?fields=id', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -111,10 +145,26 @@ export type DriveFileInfo = {
   appId?: string;
   parents: string[];
   isFolder: boolean;
+  size: number | null;
+  md5: string | null;
+  createdTime: string | null;
 };
 
+export type DriveFileList = {
+  files: DriveFileInfo[];
+  /** false quando a listagem parou no meio (rede, token). Não dá para concluir que um arquivo sumiu. */
+  complete: boolean;
+};
+
+function asSize(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** Lista todos os arquivos que o app criou no Drive (o escopo drive.file só enxerga os dele). */
-export async function listAppFiles(token: string): Promise<DriveFileInfo[]> {
+export async function listAppFiles(token: string): Promise<DriveFileList> {
   const files: DriveFileInfo[] = [];
   let pageToken: string | undefined;
   try {
@@ -122,9 +172,9 @@ export async function listAppFiles(token: string): Promise<DriveFileInfo[]> {
       const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
       const res = await driveFetch(
         token,
-        `files?q=${encodeURIComponent('trashed=false')}&fields=nextPageToken,files(id,name,appProperties,parents,mimeType)&spaces=drive&pageSize=1000${pageParam}`,
+        `files?q=${encodeURIComponent('trashed=false')}&fields=nextPageToken,files(id,name,appProperties,parents,mimeType,size,md5Checksum,createdTime)&spaces=drive&pageSize=1000${pageParam}`,
       );
-      if (!res.ok) break;
+      if (!res.ok) return { files, complete: false };
       const data = await res.json();
       for (const file of data.files ?? []) {
         if (!file.id) continue;
@@ -134,14 +184,17 @@ export async function listAppFiles(token: string): Promise<DriveFileInfo[]> {
           appId: file?.appProperties?.otherside,
           parents: file.parents ?? [],
           isFolder: file.mimeType === 'application/vnd.google-apps.folder',
+          size: asSize(file.size),
+          md5: typeof file.md5Checksum === 'string' ? file.md5Checksum : null,
+          createdTime: typeof file.createdTime === 'string' ? file.createdTime : null,
         });
       }
       pageToken = data.nextPageToken;
     } while (pageToken);
+    return { files, complete: true };
   } catch (_error) {
-    // best effort
+    return { files, complete: false };
   }
-  return files;
 }
 
 const subFolderCache: Record<string, string> = {};
@@ -155,16 +208,14 @@ export async function ensureSubFolder(
   const cacheKey = `${parentId}/${name}`;
   if (subFolderCache[cacheKey]) return subFolderCache[cacheKey];
   try {
-    const query = `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const listRes = await driveFetch(
-      token,
-      `files?q=${encodeURIComponent(query)}&fields=files(id)&spaces=drive`,
-    );
-    const listData = await listRes.json();
-    if (Array.isArray(listData.files) && listData.files.length > 0) {
-      subFolderCache[cacheKey] = listData.files[0].id;
-      return subFolderCache[cacheKey];
+    const query = `name='${name.replaceAll("'", "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const existing = await findFolders(token, query);
+    const chosen = existing ? oldestFolder(existing) : null;
+    if (chosen) {
+      subFolderCache[cacheKey] = chosen.id;
+      return chosen.id;
     }
+    if (existing == null) return null;
     const createRes = await driveFetch(token, 'files?fields=id', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -208,7 +259,10 @@ export async function moveFileToFolder(
   }
 }
 
-/** Manda um arquivo para a lixeira do Drive (recuperável). */
+/**
+ * Manda para a lixeira só um arquivo incompleto que esta tentativa acabou de criar.
+ * Cópias que já estavam no Drive não são apagadas daqui.
+ */
 export async function trashFile(token: string, fileId: string): Promise<void> {
   try {
     await driveFetch(token, `files/${fileId}`, {
@@ -251,7 +305,11 @@ export async function uploadLocalFile(
     if (!meta.id) return null;
 
     const uploaded = await uploadMedia(token, meta.id, params.fileUri, params.mimeType);
-    if (!uploaded) return null;
+    if (!uploaded) {
+      // O metadado vazio já nasceu no Drive. Sem isso, a próxima tentativa cria outro arquivo.
+      await trashFile(token, meta.id);
+      return null;
+    }
 
     // O envio de mídia pode redefinir a data; carimba de novo para ficar a data original.
     if (params.modifiedTime) {

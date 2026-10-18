@@ -85,6 +85,16 @@ internal object PreservedAudioStore {
     false
   }
 
+  /** Mesmo arquivo de origem, mesmo que a chave antiga ainda traga a data de modificação. */
+  fun hasSameFile(context: Context, path: String, size: Long): Boolean = synchronized(lock) {
+    val records = readJson(context)
+    for (index in 0 until records.length()) {
+      val stored = records.optJSONObject(index)?.optString("sourceKey") ?: continue
+      if (WhatsAppAudioPreserver.sameSourceFile(stored, path, size)) return true
+    }
+    false
+  }
+
   fun save(context: Context, audio: PreservedAudio): Boolean = synchronized(lock) {
     val records = readJson(context)
     for (index in 0 until records.length()) {
