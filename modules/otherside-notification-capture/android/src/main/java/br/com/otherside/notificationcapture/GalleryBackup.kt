@@ -121,6 +121,23 @@ internal object GalleryBackup {
     return out
   }
 
+  /**
+   * Apaga do MediaStore os itens pelas URIs content:// informadas. Com "Acesso a todos os
+   * arquivos" a remoção é direta, sem diálogo. Quem decide o que entra aqui é o JavaScript
+   * (só fotos da câmera já confirmadas no Drive). Devolve quantos realmente saíram.
+   */
+  fun deleteItems(context: Context, uris: List<String>): Int {
+    if (uris.isEmpty()) return 0
+    val resolver = context.contentResolver
+    var deleted = 0
+    for (raw in uris) {
+      val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: continue
+      val removed = runCatching { resolver.delete(uri, null, null) }.getOrDefault(0)
+      if (removed > 0) deleted += 1
+    }
+    return deleted
+  }
+
   private fun query(
     context: Context,
     collection: Uri,

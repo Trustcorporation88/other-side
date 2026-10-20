@@ -1,6 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 
 import {
+  deleteGalleryItems,
   getAllWhatsAppMedia,
   getCapturedNotifications,
   getGalleryBackupItems,
@@ -39,7 +40,12 @@ const RECORD_NAME = 'drive-uploads.json';
 const LOCK_NAME = 'drive-sync.lock';
 // Mesmo valor da appProperty "otherside" do mensagens.json, para reconciliar certo.
 const MESSAGES_KEY = 'mensagens';
-const PHOTOS_FOLDER = 'Fotos';
+// Pastas de topo separadas no Drive: WhatsApp e galeria da câmera nunca se misturam.
+//   OtherSide/WhatsApp/AAAA-MM   e   OtherSide/Galeria/AAAA-MM
+const WHATSAPP_FOLDER = 'WhatsApp';
+const GALLERY_FOLDER = 'Galeria';
+// Quantas fotos recentes da câmera ficam no celular quando o usuário liga "liberar espaço".
+const KEEP_RECENT_PHOTOS = 100;
 // Uma cópia grande (vídeo) pode levar vários minutos. O cadeado é renovado a cada arquivo.
 const LOCK_TTL_MS = 45 * 60 * 1000;
 // No sync automático, a galeria entra aos poucos. O backfill inicial não usa este teto.
@@ -244,43 +250,71 @@ export async function syncNow(
     const byNameSize = indexByNameAndSize(driveFiles);
     const byId = new Set(driveFiles.map((file) => file.id));
 
-    const monthCandidates = new Map<string, RemoteFile[]>();
-    for (const file of driveFiles) {
-      if (file.isFolder && /^\d{4}-\d{2}$/.test(file.name) && file.parents.includes(folderId)) {
-        const list = monthCandidates.get(file.name) ?? [];
-        list.push(file);
-        monthCandidates.set(file.name, list);
-      }
-    }
-    const monthFolders: Record<string, string> = {};
-    const monthFolderIds = new Set<string>();
-    for (const [name, candidates] of monthCandidates) {
-      const chosen = chooseFullestFolder(candidates, counts);
-      if (!chosen) continue;
-      monthFolders[name] = chosen.id;
-      for (const candidate of candidates) monthFolderIds.add(candidate.id);
-    }
-
-    const fotosFolders: Record<string, string> = {};
-    const fotosFolderIds = new Set<string>();
-    for (const file of driveFiles) {
-      if (!file.isFolder || file.name !== PHOTOS_FOLDER) continue;
-      fotosFolderIds.add(file.id);
-    }
-    for (const [month, monthId] of Object.entries(monthFolders)) {
-      const candidates = driveFiles.filter(
-        (file) => file.isFolder && file.name === PHOTOS_FOLDER && file.parents.includes(monthId),
-      );
-      const chosen = chooseFullestFolder(candidates, counts);
-      if (chosen) fotosFolders[month] = chosen.id;
-    }
-
     const rootFolderId: string = folderId;
     const driveToken: string = token;
+
+    // Acha (sem criar) uma subpasta de nome fixo dentro de outra, já na listagem do Drive.
+    function pickChildFolder(parentId: string, name: string): string | null {
+      const candidates = driveFiles.filter(
+        (file) => file.isFolder && file.name === name && file.parents.includes(parentId),
+      );
+      return chooseFullestFolder(candidates, counts)?.id ?? null;
+    }
+
+    let whatsappBaseId = pickChildFolder(rootFolderId, WHATSAPP_FOLDER);
+    let galleryBaseId = pickChildFolder(rootFolderId, GALLERY_FOLDER);
+
+    async function ensureWhatsappBase(): Promise<string | null> {
+      if (whatsappBaseId) return whatsappBaseId;
+      const created = await ensureSubFolder(driveToken, rootFolderId, WHATSAPP_FOLDER);
+      if (created) whatsappBaseId = created;
+      return whatsappBaseId;
+    }
+    async function ensureGalleryBase(): Promise<string | null> {
+      if (galleryBaseId) return galleryBaseId;
+      const created = await ensureSubFolder(driveToken, rootFolderId, GALLERY_FOLDER);
+      if (created) galleryBaseId = created;
+      return galleryBaseId;
+    }
+
+    // Pastas de mês (AAAA-MM) já existentes dentro de uma base. Nomes repetidos: fica a mais cheia.
+    function collectMonthFolders(baseId: string | null): {
+      folders: Record<string, string>;
+      ids: Set<string>;
+    } {
+      const folders: Record<string, string> = {};
+      const ids = new Set<string>();
+      if (!baseId) return { folders, ids };
+      const byName = new Map<string, RemoteFile[]>();
+      for (const file of driveFiles) {
+        if (file.isFolder && /^\d{4}-\d{2}$/.test(file.name) && file.parents.includes(baseId)) {
+          const list = byName.get(file.name) ?? [];
+          list.push(file);
+          byName.set(file.name, list);
+        }
+      }
+      for (const [name, candidates] of byName) {
+        const chosen = chooseFullestFolder(candidates, counts);
+        if (!chosen) continue;
+        folders[name] = chosen.id;
+        for (const candidate of candidates) ids.add(candidate.id);
+      }
+      return { folders, ids };
+    }
+
+    const whatsappGroup = collectMonthFolders(whatsappBaseId);
+    const monthFolders = whatsappGroup.folders;
+    const monthFolderIds = whatsappGroup.ids;
+    const galleryGroup = collectMonthFolders(galleryBaseId);
+    const galleryFolders = galleryGroup.folders;
+    const galleryFolderIds = galleryGroup.ids;
+
     async function monthFolderForKey(key: string): Promise<string | null> {
       const cached = monthFolders[key];
       if (cached) return cached;
-      const created = await ensureSubFolder(driveToken, rootFolderId, key);
+      const base = await ensureWhatsappBase();
+      if (!base) return null;
+      const created = await ensureSubFolder(driveToken, base, key);
       if (created) {
         monthFolders[key] = created;
         monthFolderIds.add(created);
@@ -288,15 +322,15 @@ export async function syncNow(
       return created;
     }
 
-    async function fotosFolderForKey(key: string): Promise<string | null> {
-      const cached = fotosFolders[key];
+    async function galleryFolderForKey(key: string): Promise<string | null> {
+      const cached = galleryFolders[key];
       if (cached) return cached;
-      const monthId = await monthFolderForKey(key);
-      if (!monthId) return null;
-      const created = await ensureSubFolder(driveToken, monthId, PHOTOS_FOLDER);
+      const base = await ensureGalleryBase();
+      if (!base) return null;
+      const created = await ensureSubFolder(driveToken, base, key);
       if (created) {
-        fotosFolders[key] = created;
-        fotosFolderIds.add(created);
+        galleryFolders[key] = created;
+        galleryFolderIds.add(created);
       }
       return created;
     }
@@ -307,6 +341,31 @@ export async function syncNow(
     const migrateCap = maxUploads ? 20 : 2000;
     let migrated = 0;
     let recordChanged = false;
+
+    // Migra a estrutura antiga: pastas de mês soltas na raiz do OtherSide passam para
+    // dentro de OtherSide/WhatsApp. Mover a pasta inteira leva todo o conteúdo junto (1 chamada).
+    const legacyMonthFolders = driveFiles.filter(
+      (file) =>
+        file.isFolder && /^\d{4}-\d{2}$/.test(file.name) && file.parents.includes(rootFolderId),
+    );
+    if (legacyMonthFolders.length > 0) {
+      const base = await ensureWhatsappBase();
+      if (base && base !== rootFolderId) {
+        const folderCap = maxUploads ? 4 : 2000;
+        let moved = 0;
+        for (const folder of legacyMonthFolders) {
+          if (moved >= folderCap) break;
+          touchLock();
+          if (await moveFileToFolder(token, folder.id, base, rootFolderId)) {
+            moved += 1;
+            folder.parents = folder.parents.filter((parent) => parent !== rootFolderId);
+            if (!folder.parents.includes(base)) folder.parents.push(base);
+            if (!monthFolders[folder.name]) monthFolders[folder.name] = folder.id;
+            monthFolderIds.add(folder.id);
+          }
+        }
+      }
+    }
 
     for (const file of driveFiles) {
       if (file.isFolder) continue;
@@ -324,7 +383,7 @@ export async function syncNow(
       }
 
       if (migrated >= migrateCap) continue;
-      if (!shouldMoveIntoMonthFolder(file, rootFolderId, monthFolderIds, fotosFolderIds)) continue;
+      if (!shouldMoveIntoMonthFolder(file, rootFolderId, monthFolderIds, galleryFolderIds)) continue;
       const date = dateFromName(file.name);
       if (!date) continue;
       const targetId = await monthFolderForKey(monthKeyOf(date));
@@ -376,7 +435,7 @@ export async function syncNow(
     for (const item of work) {
       touchLock();
       const targetId = item.photos
-        ? await fotosFolderForKey(item.monthKey)
+        ? await galleryFolderForKey(item.monthKey)
         : await monthFolderForKey(item.monthKey);
       const existing = findExistingUpload(byNameSize, item.fileName, item.sizeBytes, targetId ?? undefined);
       if (existing) {
@@ -426,6 +485,7 @@ export async function syncNow(
     const messagesSynced = await syncMessages(token, folderId, record, driveFiles);
     writeRecord(record);
     evictOldLocalFiles(record);
+    await offloadCameraPhotos(byNameSize, galleryFolderIds, listed.complete);
 
     const stillPending = ordered.filter(
       (item) => !isAlreadyUploaded(record, byNameSize, byId, item, listed.complete),
@@ -595,6 +655,61 @@ function evictOldLocalFiles(record: Record<string, string>): void {
     } catch (_error) {
       // best effort
     }
+  }
+}
+
+/**
+ * Libera espaço: mantém só as fotos mais recentes da câmera no celular e apaga as mais antigas
+ * que JÁ estão confirmadas no Drive. Regras de segurança (nada some do aparelho por acidente):
+ *  - precisa estar ligado de propósito nos Ajustes (desligado por padrão);
+ *  - só fotos da câmera (source "camera"); vídeo nunca entra (nem vai pro Drive);
+ *  - mantém as KEEP_RECENT_PHOTOS mais recentes, sempre;
+ *  - só apaga o que aparece na listagem atual do Drive, dentro de uma pasta Galeria/AAAA-MM,
+ *    com o mesmo nome e tamanho — nunca só pelo registro local.
+ */
+async function offloadCameraPhotos(
+  byNameSize: Map<string, RemoteFile[]>,
+  galleryFolderIds: ReadonlySet<string>,
+  listComplete: boolean,
+): Promise<void> {
+  if (!listComplete) return;
+  const settings = readBackupSettings();
+  if (!settings.offloadCameraEnabled) return;
+  if (!hasGalleryAccess()) return;
+
+  let listed: Awaited<ReturnType<typeof getGalleryBackupItems>>;
+  try {
+    listed = await getGalleryBackupItems(false);
+  } catch (_error) {
+    return;
+  }
+
+  const photos = listed
+    .filter(
+      (photo) =>
+        photo.source === 'camera' &&
+        typeof photo.uri === 'string' &&
+        photo.uri.length > 0 &&
+        (photo.mimeType ?? '').toLowerCase().startsWith('image/') &&
+        Number(photo.sizeBytes) > 0 &&
+        Boolean(photo.fileName),
+    )
+    .sort((left, right) => (Number(right.takenAt) || 0) - (Number(left.takenAt) || 0));
+  if (photos.length <= KEEP_RECENT_PHOTOS) return;
+
+  const toDelete: string[] = [];
+  for (const photo of photos.slice(KEEP_RECENT_PHOTOS)) {
+    const onDrive = findExistingUpload(byNameSize, photo.fileName, Number(photo.sizeBytes));
+    if (!onDrive) continue;
+    if (!onDrive.parents.some((parent) => galleryFolderIds.has(parent))) continue;
+    toDelete.push(photo.uri);
+  }
+  if (toDelete.length === 0) return;
+  try {
+    touchLock();
+    await deleteGalleryItems(toDelete);
+  } catch (_error) {
+    // best effort
   }
 }
 
