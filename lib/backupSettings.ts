@@ -4,14 +4,19 @@ import { Platform } from 'react-native';
 const FILE_NAME = 'backup-settings.json';
 
 export type BackupSettings = {
-  /** Fotos e vídeos de DCIM/Camera sobem para OtherSide/AAAA-MM/Fotos. */
+  /** Fotos e vídeos de DCIM/Camera sobem para OtherSide/Galeria/AAAA-MM. */
   galleryEnabled: boolean;
-  /** Inclui também as imagens/vídeos visíveis do WhatsApp na pasta Fotos. */
+  /** Inclui também as imagens/vídeos visíveis do WhatsApp no backup da galeria. */
   includeWhatsAppImages: boolean;
   /** O backup da galeria espera Wi-Fi. Áudios e mensagens não usam esta trava. */
   wifiOnly: boolean;
   /** O backup da galeria espera o aparelho carregando. */
   requireCharging: boolean;
+  /**
+   * Liberar espaço: mantém só as 100 fotos mais recentes da câmera no celular e apaga do
+   * aparelho as mais antigas JÁ confirmadas no Drive. Desligado por padrão (é destrutivo).
+   */
+  offloadCameraEnabled: boolean;
 };
 
 export const defaultBackupSettings: BackupSettings = {
@@ -19,6 +24,7 @@ export const defaultBackupSettings: BackupSettings = {
   includeWhatsAppImages: false,
   wifiOnly: true,
   requireCharging: false,
+  offloadCameraEnabled: false,
 };
 
 function asBoolean(value: unknown, fallback: boolean): boolean {
@@ -39,6 +45,10 @@ export function readBackupSettings(): BackupSettings {
       ),
       wifiOnly: asBoolean(parsed.wifiOnly, defaultBackupSettings.wifiOnly),
       requireCharging: asBoolean(parsed.requireCharging, defaultBackupSettings.requireCharging),
+      offloadCameraEnabled: asBoolean(
+        parsed.offloadCameraEnabled,
+        defaultBackupSettings.offloadCameraEnabled,
+      ),
     };
   } catch (_error) {
     return { ...defaultBackupSettings };

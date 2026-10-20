@@ -171,5 +171,7 @@ export function useDriveBackup() {
     setWifiOnly: (enabled: boolean) => applySettings({ ...readBackupSettings(), wifiOnly: enabled }),
     setRequireCharging: (enabled: boolean) =>
       applySettings({ ...readBackupSettings(), requireCharging: enabled }),
+    setOffloadCamera: (enabled: boolean) =>
+      applySettings({ ...readBackupSettings(), offloadCameraEnabled: enabled }),
   };
 }

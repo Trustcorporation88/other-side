@@ -74,6 +74,7 @@ type NativeModule = {
   stopGalleryWatch: () => void;
   requestGalleryAccess: () => Promise<{ granted?: boolean } | null>;
   getGalleryBackupItems: (includeWhatsApp: boolean) => Promise<GalleryBackupItem[]>;
+  deleteGalleryItems: (uris: string[]) => Promise<number>;
   getPreservedAudioUri: (id: string) => string | null;
   deletePreservedAudio: (id: string) => void;
   clearPreservedAudios: () => void;
@@ -241,6 +242,16 @@ export async function getGalleryBackupItems(includeWhatsApp: boolean): Promise<G
     return (await nativeModule?.getGalleryBackupItems(includeWhatsApp)) ?? [];
   } catch (_error) {
     return [];
+  }
+}
+
+/** Apaga do aparelho os itens da galeria pelas URIs content:// informadas. Devolve quantos saíram. */
+export async function deleteGalleryItems(uris: string[]): Promise<number> {
+  if (uris.length === 0) return 0;
+  try {
+    return (await nativeModule?.deleteGalleryItems(uris)) ?? 0;
+  } catch (_error) {
+    return 0;
   }
 }
 

@@ -139,6 +139,13 @@ class OtherSideNotificationCaptureModule : Module() {
       }
     }
 
+    AsyncFunction("deleteGalleryItems") Coroutine { uris: List<String> ->
+      val context = appContext.reactContext ?: return@Coroutine 0
+      withContext(Dispatchers.IO) {
+        GalleryBackup.deleteItems(context, uris)
+      }
+    }
+
     Function("getPreservedAudios") {
       val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any>>()
       PreservedAudioStore.getAll(context).map { it.toMap() }

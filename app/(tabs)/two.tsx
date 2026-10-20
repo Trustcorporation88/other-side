@@ -102,7 +102,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.version}>
-          OtherSide {Constants.expoConfig?.version ?? '1.0.16'} · {nativeAvailable ? 'módulo nativo conectado' : 'aguardando APK Android'}
+          OtherSide {Constants.expoConfig?.version ?? '1.0.17'} · {nativeAvailable ? 'módulo nativo conectado' : 'aguardando APK Android'}
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -228,7 +228,23 @@ function GalleryBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup>
     setIncludeWhatsAppImages,
     setWifiOnly,
     setRequireCharging,
+    setOffloadCamera,
   } = drive;
+
+  function handleOffloadToggle(value: boolean) {
+    if (!value) {
+      setOffloadCamera(false);
+      return;
+    }
+    Alert.alert(
+      'Liberar espaço no celular?',
+      'Quando uma foto da câmera estiver CONFIRMADA no seu Drive, o OtherSide apaga ela do celular — mantendo sempre as 100 mais recentes para acesso rápido. As fotos continuam no seu Drive. Nada que ainda não esteja no Drive é apagado, e vídeos nunca são apagados.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Ativar', style: 'destructive', onPress: () => setOffloadCamera(true) },
+      ],
+    );
+  }
 
   async function handleBackfill() {
     if (!available || !connected) {
@@ -288,7 +304,7 @@ function GalleryBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup>
         </View>
       </View>
       <Text style={styles.cardDescription}>
-        Fotos e vídeos de DCIM/Camera vão para OtherSide/AAAA-MM/Fotos, no mês em que foram feitos. Fotos novas sobem sozinhas. O que já está no Drive, com o mesmo nome e tamanho, não é enviado de novo.
+        Fotos e vídeos da câmera vão para OtherSide/Galeria/AAAA-MM, no mês em que foram feitos — separados do WhatsApp (que fica em OtherSide/WhatsApp/AAAA-MM). Fotos novas sobem sozinhas. O que já está no Drive, com o mesmo nome e tamanho, não é enviado de novo.
       </Text>
 
       <SettingToggle
@@ -318,6 +334,15 @@ function GalleryBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup>
         disabled={!available || !settings.galleryEnabled}
         onChange={setRequireCharging}
       />
+      <SettingToggle
+        label="Liberar espaço: manter só 100 fotos no celular"
+        value={settings.offloadCameraEnabled}
+        disabled={!available || !settings.galleryEnabled}
+        onChange={handleOffloadToggle}
+      />
+      <Text style={styles.toggleHint}>
+        Apaga do celular as fotos da câmera além das 100 mais recentes, só depois de confirmadas no seu Drive. As fotos ficam no Drive; vídeos nunca são apagados.
+      </Text>
 
       {connected && settings.galleryEnabled && !galleryAccess && (
         <Pressable
@@ -442,6 +467,12 @@ const styles = StyleSheet.create({
   },
   toggleLabelDisabled: {
     color: '#6F849C',
+  },
+  toggleHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
   },
   cardHeader: {
     alignItems: 'center',
