@@ -1,7 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 
-import { getAllWhatsAppMedia, openContentUri } from '@otherside/notification-capture';
+import { getAllWhatsAppMedia, getPreservedAudios, openContentUri } from '@otherside/notification-capture';
 
 import {
   dateFromDocumentName,
@@ -140,6 +140,22 @@ function candidatesFrom(input: MaterializeInput): DocumentCandidate[] {
     }
   } catch (_error) {
     // a lista local é best effort
+  }
+
+  try {
+    for (const local of getPreservedAudios()) {
+      if (local.kind !== 'document' || !isDocumentName(local.fileName) || local.sizeBytes <= 0) continue;
+      candidates.push({
+        key: documentKey(local.fileName, local.sizeBytes),
+        fileName: local.fileName,
+        sizeBytes: local.sizeBytes,
+        moment: local.originalModifiedAt || local.preservedAt || dateFromDocumentName(local.fileName),
+        sourceUri: local.uri || local.localPath,
+        driveId: input.record[local.id] || input.record[ledgerKey(local.fileName, local.sizeBytes)],
+      });
+    }
+  } catch (_error) {
+    // a cópia preservada é best effort
   }
 
   for (const file of input.remote) {

@@ -12,9 +12,9 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
- * Preserva as notas de voz e áudios do WhatsApp copiando o arquivo para o armazenamento privado
- * do OtherSide assim que ele aparece no disco — antes que o WhatsApp o apague. Nunca envia nada
- * para fora do aparelho: tudo é cópia local.
+ * Preserva notas de voz, fotos e documentos do WhatsApp copiando o arquivo para o armazenamento
+ * privado do OtherSide assim que ele aparece no disco — antes que o WhatsApp o apague. Nunca envia
+ * nada para fora do aparelho: tudo é cópia local.
  *
  * Só funciona no Android 11+ (R) com acesso a todos os arquivos (MANAGE_EXTERNAL_STORAGE),
  * porque a pasta de mídia do WhatsApp vive sob Android/media/com.whatsapp e exige esse acesso
@@ -39,7 +39,8 @@ internal object WhatsAppAudioPreserver {
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "odt", "zip",
   )
 
-  // Pastas usadas só pelo backup completo (enumeração, sem copiar).
+  // Documentos também entram no observador ao vivo: se o remetente apagar depois do download,
+  // a cópia local já existe para o Drive e a aba Docs.
   private val DOCUMENT_RELATIVE_ROOTS = listOf(
     "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents",
     "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Documents",
@@ -100,12 +101,12 @@ internal object WhatsAppAudioPreserver {
   private fun existingRoots(): List<File> {
     @Suppress("DEPRECATION")
     val base = Environment.getExternalStorageDirectory() ?: return emptyList()
-    return CANDIDATE_RELATIVE_ROOTS
+    return (CANDIDATE_RELATIVE_ROOTS + DOCUMENT_RELATIVE_ROOTS)
       .map { File(base, it) }
       .filter { it.isDirectory }
   }
 
-  /** Copia o que já está no disco dentro da janela recente, para não perder áudios acabados de chegar. */
+  /** Copia o que já está no disco dentro da janela recente, para não perder mídia acabada de chegar. */
   private fun scanExisting(context: Context, roots: List<File>) {
     val cutoff = System.currentTimeMillis() - INITIAL_SCAN_WINDOW_MS
     roots.forEach { root ->
@@ -168,11 +169,11 @@ internal object WhatsAppAudioPreserver {
   internal fun isDocument(name: String): Boolean =
     name.substringAfterLast('.', "").lowercase(Locale.ROOT) in DOCUMENT_EXTENSIONS
 
-  /** Observador ao vivo: só áudio e imagem (copiados localmente para recuperar apagados). */
-  internal fun isMedia(name: String): Boolean = isAudio(name) || isImage(name)
+  /** Observador ao vivo: áudio, imagem e documento (copiados localmente para recuperar apagados). */
+  internal fun isMedia(name: String): Boolean = isAudio(name) || isImage(name) || isDocument(name)
 
-  /** Backup completo no Drive: áudio, imagem e documento (sem vídeo). */
-  internal fun isAnyMedia(name: String): Boolean = isMedia(name) || isDocument(name)
+  /** Backup completo no Drive: a mesma mídia do observador (sem vídeo). */
+  internal fun isAnyMedia(name: String): Boolean = isMedia(name)
 
   internal fun kindOf(name: String): String = when {
     isImage(name) -> PreservedAudio.KIND_IMAGE
