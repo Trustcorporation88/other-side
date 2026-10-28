@@ -34,10 +34,11 @@ internal object WhatsAppAudioPreserver {
 
   private val AUDIO_EXTENSIONS = setOf("opus", "oga", "ogg", "m4a", "aac", "mp3", "amr", "wav")
   private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic")
-  // Documentos para o backup completo no Drive (sem vídeo, de propósito).
   private val DOCUMENT_EXTENSIONS = setOf(
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "odt", "zip",
   )
+  // Vídeo sobe direto no Drive (é pesado). Não entra no observador que copia para o app.
+  private val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "mov", "mkv", "webm", "3gp")
 
   // Documentos também entram no observador ao vivo: se o remetente apagar depois do download,
   // a cópia local já existe para o Drive e a aba Docs.
@@ -62,6 +63,13 @@ internal object WhatsAppAudioPreserver {
     "WhatsApp Business/Media/WhatsApp Voice Notes",
     "WhatsApp Business/Media/WhatsApp Audio",
     "WhatsApp Business/Media/WhatsApp Images",
+  )
+
+  private val VIDEO_RELATIVE_ROOTS = listOf(
+    "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video",
+    "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Video",
+    "WhatsApp/Media/WhatsApp Video",
+    "WhatsApp Business/Media/WhatsApp Video",
   )
 
   private val lock = Any()
@@ -169,15 +177,19 @@ internal object WhatsAppAudioPreserver {
   internal fun isDocument(name: String): Boolean =
     name.substringAfterLast('.', "").lowercase(Locale.ROOT) in DOCUMENT_EXTENSIONS
 
+  internal fun isVideo(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase(Locale.ROOT) in VIDEO_EXTENSIONS
+
   /** Observador ao vivo: áudio, imagem e documento (copiados localmente para recuperar apagados). */
   internal fun isMedia(name: String): Boolean = isAudio(name) || isImage(name) || isDocument(name)
 
-  /** Backup completo no Drive: a mesma mídia do observador (sem vídeo). */
-  internal fun isAnyMedia(name: String): Boolean = isMedia(name)
+  /** Backup no Drive: a mídia copiada localmente mais o vídeo (sem segunda cópia no app). */
+  internal fun isAnyMedia(name: String): Boolean = isMedia(name) || isVideo(name)
 
   internal fun kindOf(name: String): String = when {
     isImage(name) -> PreservedAudio.KIND_IMAGE
     isDocument(name) -> PreservedAudio.KIND_DOCUMENT
+    isVideo(name) -> PreservedAudio.KIND_VIDEO
     else -> PreservedAudio.KIND_AUDIO
   }
 
@@ -219,14 +231,14 @@ internal object WhatsAppAudioPreserver {
   }
 
   /**
-   * Enumera TODA a mídia (áudio, imagem, documento; sem vídeo) presente no disco — SEM copiar.
-   * Base do backup completo no Drive: os arquivos são enviados direto da pasta do WhatsApp.
+   * Enumera TODA a mídia no disco (áudio, imagem, documento e vídeo) — SEM copiar.
+   * Base do backup no Drive: vídeo sobe direto da pasta do WhatsApp, sem cópia no app.
    */
   fun listAllMedia(context: Context): List<Map<String, Any>> {
     if (!isSupported()) return emptyList()
     @Suppress("DEPRECATION")
     val base = Environment.getExternalStorageDirectory() ?: return emptyList()
-    val roots = (CANDIDATE_RELATIVE_ROOTS + DOCUMENT_RELATIVE_ROOTS)
+    val roots = (CANDIDATE_RELATIVE_ROOTS + DOCUMENT_RELATIVE_ROOTS + VIDEO_RELATIVE_ROOTS)
       .map { File(base, it) }
       .filter { it.isDirectory }
 
