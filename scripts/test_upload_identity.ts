@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   chooseFullestFolder,
+  duplicateMonthFolderLosers,
   findExistingUpload,
   findMessagesFile,
   indexByNameAndSize,
@@ -119,6 +120,18 @@ test('mensagens.json igual não precisa ser regravado', () => {
   assert.equal(messagesNeedUpdate({ size: 10, md5: 'abc' }, { size: 11, md5: 'zzz' }), true);
   assert.equal(messagesNeedUpdate({ size: 10, md5: null }, { size: 10, md5: null }), false);
   assert.equal(messagesNeedUpdate({ size: 10, md5: null }, null), true);
+});
+
+test('pastas de mês repetidas: a mais vazia perde para a mais cheia', () => {
+  const files = [
+    file({ id: 'frozen', name: '2026-10', isFolder: true, parents: ['whatsapp'], createdTime: '2026-10-20T00:00:00.000Z' }),
+    file({ id: 'live', name: '2026-10', isFolder: true, parents: ['whatsapp'], createdTime: '2026-10-13T00:00:00.000Z' }),
+    file({ id: 'other', name: '2026-09', isFolder: true, parents: ['whatsapp'] }),
+  ];
+  const losers = duplicateMonthFolderLosers(files, 'whatsapp', { '2026-10': 'live', '2026-09': 'other' });
+  assert.equal(losers.get('frozen'), 'live');
+  assert.equal(losers.has('live'), false);
+  assert.equal(losers.has('other'), false);
 });
 
 test('mensagens.json fica no arquivo já registrado', () => {

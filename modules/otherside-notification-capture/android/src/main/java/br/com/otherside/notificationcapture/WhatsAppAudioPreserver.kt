@@ -229,29 +229,33 @@ internal object WhatsAppAudioPreserver {
       .map { File(base, it) }
       .filter { it.isDirectory }
 
-    val out = ArrayList<Map<String, Any>>()
-    val seen = HashSet<String>()
+    val candidates = ArrayList<File>()
     for (root in roots) {
-      if (out.size >= MAX_LIST) break
       runCatching {
         root.walkTopDown()
           .filter { it.isFile && it.length() > 0L && isAnyMedia(it.name) }
-          .forEach { file ->
-            if (out.size >= MAX_LIST) return@forEach
-            val id = hash(sourceKey(file))
-            if (!seen.add(id)) return@forEach
-            out.add(
-              mapOf(
-                "id" to id,
-                "uri" to "file://${file.absolutePath}",
-                "fileName" to file.name,
-                "kind" to kindOf(file.name),
-                "originalModifiedAt" to file.lastModified(),
-                "sizeBytes" to file.length(),
-              ),
-            )
-          }
+          .forEach(candidates::add)
       }
+    }
+    // Mais recentes primeiro: o teto não pode esconder o áudio de hoje atrás de 20 mil arquivos velhos.
+    candidates.sortByDescending { it.lastModified() }
+
+    val out = ArrayList<Map<String, Any>>()
+    val seen = HashSet<String>()
+    for (file in candidates) {
+      if (out.size >= MAX_LIST) break
+      val id = hash(sourceKey(file))
+      if (!seen.add(id)) continue
+      out.add(
+        mapOf(
+          "id" to id,
+          "uri" to "file://${file.absolutePath}",
+          "fileName" to file.name,
+          "kind" to kindOf(file.name),
+          "originalModifiedAt" to file.lastModified(),
+          "sizeBytes" to file.length(),
+        ),
+      )
     }
     return out
   }
