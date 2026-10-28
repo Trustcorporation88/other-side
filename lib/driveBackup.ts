@@ -179,6 +179,8 @@ type UploadItem = {
   mimeType?: string;
   monthKey: string;
   photos: boolean;
+  /** Vídeo do WhatsApp: sobe direto, sem cópia no app. Espera Wi-Fi se a trava da galeria estiver ligada. */
+  video: boolean;
 };
 
 let syncing = false;
@@ -441,6 +443,8 @@ export async function syncNow(
     const mediaItems = collectMediaItems();
     const gallery = await collectGalleryItems();
     const gallerySkipped = gallery.skipped;
+    const settings = readBackupSettings();
+    const skipWhatsAppVideo = settings.wifiOnly && !isOnWifi();
 
     const ordered =
       options?.focus === 'gallery'
@@ -453,10 +457,13 @@ export async function syncNow(
     const pendingItems = ordered.filter((item) => !isAlreadyUploaded(record, byNameSize, byId, item, listed.complete));
     let galleryKept = 0;
     const work = pendingItems.filter((item) => {
-      if (!item.photos) return true;
-      if (gallerySkipped) return false;
-      if (galleryKept >= galleryLimit) return false;
-      galleryKept += 1;
+      if (item.photos) {
+        if (gallerySkipped) return false;
+        if (galleryKept >= galleryLimit) return false;
+        galleryKept += 1;
+        return true;
+      }
+      if (item.video && skipWhatsAppVideo) return false;
       return true;
     });
 
@@ -556,6 +563,7 @@ function collectMediaItems(): UploadItem[] {
     fileName: string;
     originalModifiedAt: number;
     sizeBytes: number;
+    kind?: string;
   }) => {
     if (!item.fileName || item.sizeBytes <= 0) return;
     const stableId = ledgerKey(item.fileName, item.sizeBytes);
@@ -569,6 +577,7 @@ function collectMediaItems(): UploadItem[] {
       sizeBytes: item.sizeBytes,
       monthKey: monthKeyOf(date),
       photos: false,
+      video: item.kind === 'video',
     });
   };
   for (const media of getAllWhatsAppMedia()) add(media);
@@ -611,6 +620,7 @@ async function collectGalleryItems(): Promise<{ items: UploadItem[]; skipped: Ga
       mimeType: photo.mimeType,
       monthKey: monthKeyLocal(takenAt),
       photos: true,
+      video: false,
     });
   }
   return { items, skipped };

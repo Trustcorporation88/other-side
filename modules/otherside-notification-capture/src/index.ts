@@ -22,7 +22,7 @@ export type PreservedAudio = {
   origin: 'received' | 'sent' | 'unknown';
   originalModifiedAt: number;
   preservedAt: number;
-  kind: 'audio' | 'image' | 'document';
+  kind: 'audio' | 'image' | 'document' | 'video';
 };
 
 export type WhatsAppMediaItem = {

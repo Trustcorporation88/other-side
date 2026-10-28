@@ -169,7 +169,7 @@ function DriveBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup> }
           : connected
             ? syncing && progress
               ? `Enviando para o seu Drive… ${progress.done} de ${progress.total}.`
-              : `Áudios, fotos e mensagens vão para a pasta "OtherSide" no seu Drive, um arquivo por nome e tamanho. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
+              : `Áudios, fotos, documentos, vídeos e mensagens vão para a pasta "OtherSide" no seu Drive. Vídeo do WhatsApp sobe direto, sem cópia extra no app, e espera Wi-Fi. ${uploaded} no Drive · ${pending} pendente${pending === 1 ? '' : 's'}.`
             : 'Conecte sua conta do Google para guardar os áudios, fotos e mensagens no seu próprio Drive (pasta "OtherSide"). Só o app acessa esses arquivos.'}
       </Text>
 

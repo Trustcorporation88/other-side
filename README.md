@@ -10,7 +10,7 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 - Preservação de notas de voz, **fotos** e **documentos** do WhatsApp por observação da pasta de mídia, com abas de reprodução (Áudios), galeria (Fotos) e **Docs**.
 - **Backup opcional no Google Drive** da própria pessoa (login com escopo `drive.file`); sobe áudios, fotos e o texto das mensagens para a pasta `OtherSide/`, organizados em **subpastas por mês** (`OtherSide/AAAA-MM/`) com a data original carimbada em cada arquivo, e continua **em segundo plano** (melhor-esforço). Um arquivo com o mesmo nome e o mesmo tamanho não é enviado de novo. Cópias que já existem no Drive não são apagadas pelo app.
 - **Backup da galeria**: fotos e vídeos de `DCIM/Camera` vão para `OtherSide/Galeria/AAAA-MM`, separados do WhatsApp (`OtherSide/WhatsApp/AAAA-MM`). Dá para incluir também as imagens do WhatsApp que aparecem na galeria. Fotos novas sobem sozinhas; em Ajustes há o envio inicial das que já estão no aparelho. Por padrão a galeria espera Wi-Fi, e dá para exigir carregador.
-- **Backup completo do histórico**: além dos itens recentes preservados, o app envia ao Drive TODA a mídia que está no celular (áudios, fotos e **documentos/PDF**, sem vídeo do WhatsApp). Documentos também são copiados na hora, como os áudios: se o remetente apagar depois do download, a cópia local já existe. Vídeos da câmera entram só pelo backup da galeria. Os **10 documentos mais recentes** ficam no aparelho, na aba **Docs**. O restante continua só no Drive.
+- **Backup completo do histórico**: além dos itens recentes preservados, o app envia ao Drive TODA a mídia que está no celular (áudios, fotos, **documentos/PDF** e **vídeos do WhatsApp**). Documentos são copiados na hora, como os áudios. Vídeos do WhatsApp **não** ganham cópia no app — sobem direto para `OtherSide/WhatsApp/AAAA-MM`, no Wi-Fi (a mesma trava da galeria). Vídeos da câmera continuam no backup da galeria. Os **10 documentos mais recentes** ficam no aparelho, na aba **Docs**.
 - **Economia de memória**: itens já enviados ao Drive e com mais de 7 dias têm a cópia local apagada (fica só índice + miniatura); ao abrir um item antigo, o app baixa do Drive sob demanda, sempre dentro do próprio app.
 - Validação em aparelho físico ainda necessária.
 
@@ -66,7 +66,7 @@ Depois de instalar: abra **Ajustes**, conecte o Google Drive e conceda **fotos e
 | `READ_EXTERNAL_STORAGE` | Leitura de mídia no Android 12 e anteriores |
 | `ACCESS_NETWORK_STATE` | Saber se a rede é Wi-Fi antes de subir a galeria |
 
-Áudios, documentos e `mensagens.json` não esperam Wi-Fi. Essa trava vale só para a galeria.
+Áudios, documentos e `mensagens.json` não esperam Wi-Fi. A trava de Wi-Fi vale para a galeria e para os vídeos do WhatsApp.
 
 ## APK autônomo de teste
 

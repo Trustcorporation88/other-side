@@ -70,10 +70,17 @@ class WhatsAppAudioPreserverTest {
     assertTrue(WhatsAppAudioPreserver.isAnyMedia("DOC-20251012-WA0004.pdf"))
     assertTrue(WhatsAppAudioPreserver.isAnyMedia("PTT-20251012-WA0001.opus"))
 
-    // Vídeo fica de fora de propósito.
-    assertFalse(WhatsAppAudioPreserver.isAnyMedia("VID-20251012-WA0005.mp4"))
-
     assertEquals(PreservedAudio.KIND_DOCUMENT, WhatsAppAudioPreserver.kindOf("DOC-20251012-WA0004.pdf"))
+  }
+
+  @Test
+  fun `video entra no backup do Drive mas nao e copiado no app`() {
+    assertTrue(WhatsAppAudioPreserver.isVideo("VID-20251012-WA0005.mp4"))
+    assertTrue(WhatsAppAudioPreserver.isVideo("STATUS.3GP"))
+    assertFalse(WhatsAppAudioPreserver.isVideo("IMG-20251012-WA0003.jpg"))
+    assertFalse(WhatsAppAudioPreserver.isMedia("VID-20251012-WA0005.mp4"))
+    assertTrue(WhatsAppAudioPreserver.isAnyMedia("VID-20251012-WA0005.mp4"))
+    assertEquals(PreservedAudio.KIND_VIDEO, WhatsAppAudioPreserver.kindOf("VID-20251012-WA0005.mp4"))
   }
 
   @Test

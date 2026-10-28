@@ -8,7 +8,7 @@ export type BackupSettings = {
   galleryEnabled: boolean;
   /** Inclui também as imagens/vídeos visíveis do WhatsApp no backup da galeria. */
   includeWhatsAppImages: boolean;
-  /** O backup da galeria espera Wi-Fi. Áudios e mensagens não usam esta trava. */
+  /** Galeria e vídeos do WhatsApp esperam Wi-Fi. Áudios, documentos e mensagens não usam esta trava. */
   wifiOnly: boolean;
   /** O backup da galeria espera o aparelho carregando. */
   requireCharging: boolean;
