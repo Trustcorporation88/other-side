@@ -92,6 +92,6 @@ Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de p
 
 ```bash
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
-node --experimental-strip-types --test scripts/test_upload_identity.ts
+node --experimental-strip-types --test scripts/test_upload_identity.ts scripts/test_recent_documents.ts scripts/test_media_date.ts
 python3 scripts/verify_standalone_apk.py /caminho/app-release.apk
 ```

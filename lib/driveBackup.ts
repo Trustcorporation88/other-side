@@ -23,12 +23,15 @@ import {
   uploadMedia,
   type DriveFileInfo,
 } from './googleDrive';
+import { dateFromName, monthKeyLocal, monthKeyOf } from './mediaDate';
 import {
   childCounts,
   chooseFullestFolder,
+  duplicateMonthFolderLosers,
   findExistingUpload,
   findMessagesFile,
   indexByNameAndSize,
+  isMonthFolderName,
   ledgerKey,
   messagesNeedUpdate,
   shouldMoveIntoMonthFolder,
@@ -81,27 +84,6 @@ function mimeForFile(fileName: string, explicit?: string): string {
   if (explicit && explicit !== 'application/octet-stream') return explicit;
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
   return FILE_MIME[ext] ?? 'application/octet-stream';
-}
-
-/** Extrai a data (UTC) do nome do arquivo do WhatsApp (ex.: IMG-20250915-WA0012.jpg). */
-function dateFromName(fileName: string): Date | null {
-  const match = fileName.match(/(\d{4})(\d{2})(\d{2})/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return new Date(Date.UTC(year, month - 1, day));
-}
-
-function monthKeyOf(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-/** Mês no fuso do aparelho. A foto das 22h no Brasil não pode cair no mês seguinte. */
-function monthKeyLocal(timestamp: number): string {
-  const date = new Date(timestamp);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function recordFile(): File {
@@ -292,7 +274,7 @@ export async function syncNow(
       if (!baseId) return { folders, ids };
       const byName = new Map<string, RemoteFile[]>();
       for (const file of driveFiles) {
-        if (file.isFolder && /^\d{4}-\d{2}$/.test(file.name) && file.parents.includes(baseId)) {
+        if (file.isFolder && isMonthFolderName(file.name) && file.parents.includes(baseId)) {
           const list = byName.get(file.name) ?? [];
           list.push(file);
           byName.set(file.name, list);
@@ -307,12 +289,10 @@ export async function syncNow(
       return { folders, ids };
     }
 
-    const whatsappGroup = collectMonthFolders(whatsappBaseId);
-    const monthFolders = whatsappGroup.folders;
-    const monthFolderIds = whatsappGroup.ids;
-    const galleryGroup = collectMonthFolders(galleryBaseId);
-    const galleryFolders = galleryGroup.folders;
-    const galleryFolderIds = galleryGroup.ids;
+    const monthFolders: Record<string, string> = {};
+    const monthFolderIds = new Set<string>();
+    const galleryFolders: Record<string, string> = {};
+    const galleryFolderIds = new Set<string>();
 
     async function monthFolderForKey(key: string): Promise<string | null> {
       const cached = monthFolders[key];
@@ -351,7 +331,7 @@ export async function syncNow(
     // dentro de OtherSide/WhatsApp. Mover a pasta inteira leva todo o conteúdo junto (1 chamada).
     const legacyMonthFolders = driveFiles.filter(
       (file) =>
-        file.isFolder && /^\d{4}-\d{2}$/.test(file.name) && file.parents.includes(rootFolderId),
+        file.isFolder && isMonthFolderName(file.name) && file.parents.includes(rootFolderId),
     );
     if (legacyMonthFolders.length > 0) {
       const base = await ensureWhatsappBase();
@@ -361,16 +341,59 @@ export async function syncNow(
         for (const folder of legacyMonthFolders) {
           if (moved >= folderCap) break;
           touchLock();
-          if (await moveFileToFolder(token, folder.id, base, rootFolderId)) {
+          if (await moveFileToFolder(driveToken, folder.id, base, rootFolderId)) {
             moved += 1;
             folder.parents = folder.parents.filter((parent) => parent !== rootFolderId);
             if (!folder.parents.includes(base)) folder.parents.push(base);
-            if (!monthFolders[folder.name]) monthFolders[folder.name] = folder.id;
             monthFolderIds.add(folder.id);
           }
         }
       }
     }
+
+    // Recalcula depois da migração: duas pastas 2026-10 não podem ficar uma congelada
+    // e a outra recebendo arquivo novo. Fica a que já tem mais conteúdo.
+    function replaceFolderMap(
+      target: Record<string, string>,
+      ids: Set<string>,
+      next: { folders: Record<string, string>; ids: Set<string> },
+    ): void {
+      Object.keys(target).forEach((key) => delete target[key]);
+      Object.assign(target, next.folders);
+      for (const id of next.ids) ids.add(id);
+    }
+    replaceFolderMap(monthFolders, monthFolderIds, collectMonthFolders(whatsappBaseId));
+    replaceFolderMap(galleryFolders, galleryFolderIds, collectMonthFolders(galleryBaseId));
+
+    async function consolidateDuplicateMonthFolders(
+      baseId: string | null,
+      chosen: Record<string, string>,
+    ): Promise<void> {
+      if (!baseId) return;
+      const losers = duplicateMonthFolderLosers(driveFiles, baseId, chosen);
+      if (losers.size === 0) return;
+      const cap = maxUploads ? 20 : 500;
+      let moved = 0;
+      for (const file of driveFiles) {
+        if (moved >= cap) break;
+        if (file.isFolder) continue;
+        const from = file.parents.find((parent) => losers.has(parent));
+        if (!from) continue;
+        const targetId = losers.get(from);
+        if (!targetId || file.parents.includes(targetId)) continue;
+        touchLock();
+        if (await moveFileToFolder(driveToken, file.id, targetId, from)) {
+          file.parents = file.parents.filter((parent) => parent !== from);
+          if (!file.parents.includes(targetId)) file.parents.push(targetId);
+          counts.set(from, Math.max(0, (counts.get(from) ?? 1) - 1));
+          counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
+          moved += 1;
+        }
+      }
+    }
+
+    await consolidateDuplicateMonthFolders(whatsappBaseId, monthFolders);
+    await consolidateDuplicateMonthFolders(galleryBaseId, galleryFolders);
 
     for (const file of driveFiles) {
       if (file.isFolder) continue;

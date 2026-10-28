@@ -82,6 +82,31 @@ export function childCounts(files: readonly RemoteFile[]): Map<string, number> {
   return counts;
 }
 
+const MONTH_FOLDER_NAME = /^\d{4}-\d{2}$/;
+
+export function isMonthFolderName(name: string): boolean {
+  return MONTH_FOLDER_NAME.test(name);
+}
+
+/**
+ * Pastas AAAA-MM repetidas na mesma base: as que perderam para a mais cheia.
+ * O app move o conteúdo para a vencedora; as pastas vazias ficam (não apagamos nada no Drive).
+ */
+export function duplicateMonthFolderLosers(
+  files: readonly RemoteFile[],
+  parentId: string,
+  chosen: Readonly<Record<string, string>>,
+): Map<string, string> {
+  const losers = new Map<string, string>();
+  if (!parentId) return losers;
+  for (const file of files) {
+    if (!file.isFolder || !isMonthFolderName(file.name) || !file.parents.includes(parentId)) continue;
+    const winner = chosen[file.name];
+    if (winner && file.id !== winner) losers.set(file.id, winner);
+  }
+  return losers;
+}
+
 /**
  * Só move para a pasta do mês o que ainda está solto na raiz do OtherSide.
  * Arquivo que já está numa pasta AAAA-MM, ou em Fotos, não é mexido —
