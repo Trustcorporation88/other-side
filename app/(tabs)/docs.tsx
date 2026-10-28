@@ -63,8 +63,8 @@ export default function DocsScreen() {
         <Text style={styles.eyebrow}>OTHERSIDE</Text>
         <Text style={styles.title}>Documentos</Text>
         <Text style={styles.intro}>
-          Os documentos do WhatsApp sobem direto para o Drive. Os 10 mais recentes também ficam
-          neste aparelho, para abrir mesmo depois de apagados na conversa.
+          Os documentos do WhatsApp são copiados na hora, como os áudios. Os 10 mais recentes
+          ficam neste aparelho para abrir mesmo depois de apagados na conversa.
         </Text>
 
         {refreshing && documents.length === 0 ? (
@@ -79,8 +79,8 @@ export default function DocsScreen() {
             </View>
             <Text style={styles.emptyTitle}>Nenhum documento por aqui</Text>
             <Text style={styles.emptyDescription}>
-              Quando um PDF ou outro documento for enviado ao Drive, a cópia dos 10 mais recentes
-              aparece nesta lista.
+              Quando um PDF ou outro documento for baixado no WhatsApp, a cópia dos 10 mais
+              recentes aparece nesta lista — mesmo se a mensagem for apagada depois.
             </Text>
           </View>
         ) : (

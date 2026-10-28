@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { addAudioPreservedListener } from '@otherside/notification-capture';
+
 import { readUploadRecord } from '@/lib/driveBackup';
 import { getAccessToken, listAppFiles } from '@/lib/googleDrive';
 import {
@@ -34,10 +36,16 @@ export function useRecentDocuments() {
 
   useEffect(() => {
     void refresh();
+    const mediaSubscription = addAudioPreservedListener(() => {
+      void refresh();
+    });
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh();
     });
-    return () => subscription.remove();
+    return () => {
+      mediaSubscription.remove();
+      subscription.remove();
+    };
   }, [refresh]);
 
   return { documents, refreshing, refresh };
