@@ -12,6 +12,7 @@ import {
 } from '@otherside/notification-capture';
 
 import { readBackupSettings } from './backupSettings';
+import { materializeRecentDocuments } from './recentDocuments';
 import {
   ensureFolder,
   ensureSubFolder,
@@ -105,6 +106,10 @@ function monthKeyLocal(timestamp: number): string {
 
 function recordFile(): File {
   return new File(Paths.document, RECORD_NAME);
+}
+
+export function readUploadRecord(): Record<string, string> {
+  return readRecord();
 }
 
 function readRecord(): Record<string, string> {
@@ -486,6 +491,11 @@ export async function syncNow(
     writeRecord(record);
     evictOldLocalFiles(record);
     await offloadCameraPhotos(byNameSize, galleryFolderIds, listed.complete);
+    try {
+      await materializeRecentDocuments({ token, remote: driveFiles, record });
+    } catch (_error) {
+      // A aba Documentos tenta de novo ao abrir.
+    }
 
     const stillPending = ordered.filter(
       (item) => !isAlreadyUploaded(record, byNameSize, byId, item, listed.complete),
