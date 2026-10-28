@@ -74,6 +74,7 @@ type NativeModule = {
   stopGalleryWatch: () => void;
   requestGalleryAccess: () => Promise<{ granted?: boolean } | null>;
   getGalleryBackupItems: (includeWhatsApp: boolean) => Promise<GalleryBackupItem[]>;
+  openContentUri: (uri: string, mimeType: string) => boolean;
   getPreservedAudioUri: (id: string) => string | null;
   deletePreservedAudio: (id: string) => void;
   clearPreservedAudios: () => void;
@@ -234,6 +235,14 @@ export async function requestGalleryAccess(): Promise<boolean> {
     return hasGalleryAccess();
   }
   return hasGalleryAccess();
+}
+
+export function openContentUri(uri: string, mimeType: string): boolean {
+  try {
+    return nativeModule?.openContentUri(uri, mimeType) ?? false;
+  } catch (_error) {
+    return false;
+  }
 }
 
 export async function getGalleryBackupItems(includeWhatsApp: boolean): Promise<GalleryBackupItem[]> {

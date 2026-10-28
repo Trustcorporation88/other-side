@@ -132,6 +132,22 @@ class OtherSideNotificationCaptureModule : Module() {
       )
     }
 
+    Function("openContentUri") { uriString: String, mimeType: String ->
+      val activity = appContext.currentActivity ?: return@Function false
+      val uri = Uri.parse(uriString)
+      if (uri.scheme != "content" && uri.scheme != "file") return@Function false
+      val view = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType.ifBlank { "application/octet-stream" })
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      try {
+        activity.startActivity(Intent.createChooser(view, "Abrir documento"))
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+
     AsyncFunction("getGalleryBackupItems") Coroutine { includeWhatsApp: Boolean ->
       val context = appContext.reactContext ?: return@Coroutine emptyList<Map<String, Any>>()
       withContext(Dispatchers.IO) {
