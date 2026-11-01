@@ -49,6 +49,7 @@ type NativeEvents = {
   onNotificationCaptured: (event: CapturedNotification) => void;
   onAudioPreserved: (event: PreservedAudio) => void;
   onGalleryChanged: (event: { at: number }) => void;
+  onWhatsAppVideoReady: (event: { at: number }) => void;
 };
 
 type NativeModule = {
@@ -271,6 +272,14 @@ export async function deleteGalleryItems(uris: string[]): Promise<number> {
 export function addGalleryChangedListener(listener: () => void) {
   try {
     return nativeModule?.addListener('onGalleryChanged', () => listener()) ?? { remove: () => undefined };
+  } catch (_error) {
+    return { remove: () => undefined };
+  }
+}
+
+export function addWhatsAppVideoReadyListener(listener: () => void) {
+  try {
+    return nativeModule?.addListener('onWhatsAppVideoReady', () => listener()) ?? { remove: () => undefined };
   } catch (_error) {
     return { remove: () => undefined };
   }

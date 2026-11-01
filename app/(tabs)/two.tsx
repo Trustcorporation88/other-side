@@ -323,7 +323,7 @@ function GalleryBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup>
         onChange={setIncludeWhatsAppImages}
       />
       <SettingToggle
-        label="Galeria só no Wi-Fi"
+        label="Galeria e vídeos do WhatsApp só no Wi-Fi"
         value={settings.wifiOnly}
         disabled={!available || !settings.galleryEnabled}
         onChange={setWifiOnly}

@@ -166,8 +166,8 @@ export type SyncResult = {
 export type SyncOptions = {
   /** No automático, limita a galeria. O backfill inicial passa um número bem alto. */
   galleryLimit?: number;
-  /** 'gallery' sobe fotos antes do restante, para uma foto nova não esperar a fila toda. */
-  focus?: 'default' | 'gallery';
+  /** 'gallery' sobe fotos antes do restante; 'whatsapp-video' manda o vídeo do WhatsApp na frente. */
+  focus?: 'default' | 'gallery' | 'whatsapp-video';
 };
 
 type UploadItem = {
@@ -446,10 +446,12 @@ export async function syncNow(
     const settings = readBackupSettings();
     const skipWhatsAppVideo = settings.wifiOnly && !isOnWifi();
 
+    const videos = mediaItems.filter((item) => item.video);
+    const otherMedia = mediaItems.filter((item) => !item.video);
     const ordered =
       options?.focus === 'gallery'
-        ? [...gallery.items, ...mediaItems]
-        : [...mediaItems, ...gallery.items];
+        ? [...gallery.items, ...videos, ...otherMedia]
+        : [...videos, ...otherMedia, ...gallery.items];
     const galleryLimit = options?.galleryLimit ?? (maxUploads ? maxUploads : DEFAULT_GALLERY_LIMIT);
 
     let uploaded = 0;
