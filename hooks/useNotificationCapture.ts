@@ -20,7 +20,8 @@ export function useNotificationCapture() {
       return;
     }
 
-    setNotifications(getCapturedNotifications());
+    const records = getCapturedNotifications();
+    setNotifications(Array.isArray(records) ? records : []);
     setListenerEnabled(isListenerEnabled());
   }, []);
 

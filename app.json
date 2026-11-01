@@ -2,16 +2,23 @@
   "expo": {
     "name": "OtherSide",
     "slug": "other-side",
-    "version": "1.0.18",
+    "version": "1.0.19",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "otherside",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#071527",
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#071527"
+    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 19,
+      "versionCode": 20,
+      "userInterfaceStyle": "dark",
+      "backgroundColor": "#071527",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -33,7 +40,11 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#071527",
+          "dark": {
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#071527"
+          }
         }
       ],
       "./plugins/with-notification-listener",
