@@ -13,6 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { openNotificationSettings } from '@otherside/notification-capture';
 import { useNotificationCapture } from '@/hooks/useNotificationCapture';
+import {
+  normalizeWhatsAppPackage,
+  presentWhatsAppAccounts,
+  whatsappAccountLabel,
+  type WhatsAppAccountId,
+} from '@/lib/whatsappAccount';
 
 const colors = {
   navy: '#071527',
@@ -42,8 +48,14 @@ function getAudioStatusLabel(status: string) {
 
 export default function MessagesScreen() {
   const [query, setQuery] = useState('');
+  const [accountFilter, setAccountFilter] = useState<'all' | WhatsAppAccountId>('all');
   const { notifications, listenerEnabled, nativeAvailable, refresh } = useNotificationCapture();
+  const accounts = presentWhatsAppAccounts(notifications.map((item) => item.packageName));
+  const effectiveFilter =
+    accountFilter === 'all' || accounts.includes(accountFilter) ? accountFilter : 'all';
   const filteredNotifications = notifications.filter((notification) => {
+    const account = normalizeWhatsAppPackage(notification.packageName);
+    if (effectiveFilter !== 'all' && account !== effectiveFilter) return false;
     const searchableText = `${notification.conversation} ${notification.sender} ${notification.message}`.toLowerCase();
     return searchableText.includes(query.trim().toLowerCase());
   });
@@ -115,8 +127,35 @@ export default function MessagesScreen() {
             <Text style={styles.sectionEyebrow}>HISTÓRICO LOCAL</Text>
             <Text style={styles.sectionTitle}>Mensagens preservadas</Text>
           </View>
-          <Text style={styles.count}>{notifications.length}</Text>
+          <Text style={styles.count}>{filteredNotifications.length}</Text>
         </View>
+
+        {accounts.length > 1 && (
+          <View style={styles.accountRow}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setAccountFilter('all')}
+              style={[styles.accountChip, effectiveFilter === 'all' && styles.accountChipActive]}>
+              <Text style={[styles.accountChipText, effectiveFilter === 'all' && styles.accountChipTextActive]}>
+                Todas
+              </Text>
+            </Pressable>
+            {accounts.map((account) => {
+              const selected = effectiveFilter === account;
+              return (
+                <Pressable
+                  key={account}
+                  accessibilityRole="button"
+                  onPress={() => setAccountFilter(account)}
+                  style={[styles.accountChip, selected && styles.accountChipActive]}>
+                  <Text style={[styles.accountChipText, selected && styles.accountChipTextActive]}>
+                    {whatsappAccountLabel(account)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>⌕</Text>
@@ -163,7 +202,9 @@ export default function MessagesScreen() {
                     {getAudioStatusLabel(notification.audioStatus)}
                   </Text>
                 )}
-                <Text style={styles.messageMeta}>WHATSAPP · PRESERVADA NO APARELHO</Text>
+                <Text style={styles.messageMeta}>
+                  {whatsappAccountLabel(notification.packageName).toUpperCase()} · PRESERVADA NO APARELHO
+                </Text>
               </View>
             ))}
           </View>
@@ -323,6 +364,33 @@ const styles = StyleSheet.create({
     color: colors.blueSoft,
     fontSize: 28,
     fontWeight: '700',
+  },
+  accountRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  accountChip: {
+    backgroundColor: colors.navySoft,
+    borderColor: '#173555',
+    borderRadius: 20,
+    borderWidth: 1,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  accountChipActive: {
+    backgroundColor: colors.blue,
+    borderColor: colors.blue,
+  },
+  accountChipText: {
+    color: colors.blueSoft,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  accountChipTextActive: {
+    color: '#061329',
   },
   searchBox: {
     alignItems: 'center',

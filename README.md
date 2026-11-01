@@ -6,7 +6,7 @@ Aplicativo Android local-first para preservar o conteúdo disponível nas notifi
 
 - Base Expo Router em TypeScript criada.
 - Primeira interface implementada com histórico vazio, status da captura e aba de ajustes.
-- Módulo Kotlin conectado ao histórico local e ao acesso às notificações.
+- Módulo Kotlin conectado ao histórico local e ao acesso às notificações. Na aba Mensagens, WhatsApp e WhatsApp Business aparecem em contas separadas.
 - Preservação de notas de voz, **fotos** e **documentos** do WhatsApp por observação da pasta de mídia, com abas de reprodução (Áudios), galeria (Fotos) e **Docs**.
 - **Backup opcional no Google Drive** da própria pessoa (login com escopo `drive.file`); sobe áudios, fotos e o texto das mensagens para a pasta `OtherSide/`, organizados em **subpastas por mês** (`OtherSide/AAAA-MM/`) com a data original carimbada em cada arquivo, e continua **em segundo plano** (melhor-esforço). Um arquivo com o mesmo nome e o mesmo tamanho não é enviado de novo. Cópias que já existem no Drive não são apagadas pelo app.
 - **Backup da galeria**: fotos e vídeos de `DCIM/Camera` vão para `OtherSide/Galeria/AAAA-MM`, separados do WhatsApp (`OtherSide/WhatsApp/AAAA-MM`). Dá para incluir também as imagens do WhatsApp que aparecem na galeria. Fotos novas sobem sozinhas; em Ajustes há o envio inicial das que já estão no aparelho. Por padrão a galeria espera Wi-Fi, e dá para exigir carregador.
@@ -92,6 +92,6 @@ Esta variante usa a chave de teste gerada pelo Expo. Não é uma assinatura de p
 
 ```bash
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
-node --experimental-strip-types --test scripts/test_upload_identity.ts scripts/test_recent_documents.ts scripts/test_media_date.ts
+node --experimental-strip-types --test scripts/test_upload_identity.ts scripts/test_recent_documents.ts scripts/test_media_date.ts scripts/test_whatsapp_account.ts
 python3 scripts/verify_standalone_apk.py /caminho/app-release.apk
 ```
