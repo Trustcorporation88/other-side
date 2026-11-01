@@ -107,9 +107,13 @@ export function openNotificationSettings(): void {
   }
 }
 
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 export function getCapturedNotifications(): CapturedNotification[] {
   try {
-    return nativeModule?.getCapturedNotifications() ?? [];
+    return asArray(nativeModule?.getCapturedNotifications());
   } catch (_error) {
     return [];
   }
@@ -175,7 +179,7 @@ export function startAudioPreservation(): void {
 
 export function getPreservedAudios(): PreservedAudio[] {
   try {
-    return nativeModule?.getPreservedAudios() ?? [];
+    return asArray(nativeModule?.getPreservedAudios());
   } catch (_error) {
     return [];
   }
@@ -183,7 +187,7 @@ export function getPreservedAudios(): PreservedAudio[] {
 
 export function getAllWhatsAppMedia(): WhatsAppMediaItem[] {
   try {
-    return nativeModule?.getAllWhatsAppMedia() ?? [];
+    return asArray(nativeModule?.getAllWhatsAppMedia());
   } catch (_error) {
     return [];
   }
@@ -248,7 +252,7 @@ export function openContentUri(uri: string, mimeType: string): boolean {
 
 export async function getGalleryBackupItems(includeWhatsApp: boolean): Promise<GalleryBackupItem[]> {
   try {
-    return (await nativeModule?.getGalleryBackupItems(includeWhatsApp)) ?? [];
+    return asArray(await nativeModule?.getGalleryBackupItems(includeWhatsApp));
   } catch (_error) {
     return [];
   }

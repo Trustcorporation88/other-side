@@ -13,12 +13,16 @@ let configured = false;
 
 export function configureGoogleDrive(): void {
   if (configured) return;
-  GoogleSignin.configure({
-    webClientId: WEB_CLIENT_ID,
-    scopes: [DRIVE_SCOPE],
-    offlineAccess: false,
-  });
-  configured = true;
+  try {
+    GoogleSignin.configure({
+      webClientId: WEB_CLIENT_ID,
+      scopes: [DRIVE_SCOPE],
+      offlineAccess: false,
+    });
+    configured = true;
+  } catch (_error) {
+    // Native Sign-In ausente ou falho não pode derrubar o restante do app.
+  }
 }
 
 export async function connectDrive(): Promise<boolean> {
