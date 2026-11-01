@@ -20,7 +20,7 @@ class OtherSideNotificationCaptureModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("OtherSideNotificationCapture")
 
-    Events("onNotificationCaptured", "onAudioPreserved", "onGalleryChanged")
+    Events("onNotificationCaptured", "onAudioPreserved", "onGalleryChanged", "onWhatsAppVideoReady")
 
     OnCreate {
       instance = this@OtherSideNotificationCaptureModule
@@ -198,6 +198,10 @@ class OtherSideNotificationCaptureModule : Module() {
 
   internal fun emitGalleryChanged() {
     sendEvent("onGalleryChanged", mapOf("at" to System.currentTimeMillis()))
+  }
+
+  internal fun emitWhatsAppVideoReady() {
+    sendEvent("onWhatsAppVideoReady", mapOf("at" to System.currentTimeMillis()))
   }
 
   companion object {

@@ -3,7 +3,10 @@ import { AppState, Platform } from 'react-native';
 
 import {
   addGalleryChangedListener,
+  addWhatsAppVideoReadyListener,
   isNativeAvailable,
+  isOnWifi,
+  startAudioPreservation,
   startGalleryWatch,
 } from '@otherside/notification-capture';
 
@@ -13,8 +16,8 @@ import { syncNow } from '@/lib/driveBackup';
 import { configureGoogleDrive, isDriveConnected } from '@/lib/googleDrive';
 
 /**
- * Mantém o backup da galeria vivo fora da tela de Ajustes.
- * Uma foto nova dispara um lote pequeno; o restante segue na tarefa em segundo plano.
+ * Mantém o backup vivo fora da tela de Ajustes.
+ * Foto nova dispara um lote da galeria; vídeo do WhatsApp dispara um lote direto ao Drive.
  */
 export function DriveBackupRuntime() {
   useEffect(() => {
@@ -22,9 +25,11 @@ export function DriveBackupRuntime() {
     configureGoogleDrive();
 
     const boot = () => {
-      if (!isDriveConnected() || !readBackupSettings().galleryEnabled) return;
+      if (!isDriveConnected()) return;
       void registerDriveSync();
-      startGalleryWatch();
+      startAudioPreservation();
+      if (readBackupSettings().galleryEnabled) startGalleryWatch();
+      void syncNow();
     };
     boot();
 
@@ -32,12 +37,18 @@ export function DriveBackupRuntime() {
       if (!isDriveConnected() || !readBackupSettings().galleryEnabled) return;
       void syncNow(undefined, 6, { focus: 'gallery', galleryLimit: 6 });
     });
+    const videos = addWhatsAppVideoReadyListener(() => {
+      if (!isDriveConnected()) return;
+      if (readBackupSettings().wifiOnly && !isOnWifi()) return;
+      void syncNow(undefined, 4, { focus: 'whatsapp-video' });
+    });
     const appState = AppState.addEventListener('change', (state) => {
       if (state === 'active') boot();
     });
 
     return () => {
       gallery.remove();
+      videos.remove();
       appState.remove();
     };
   }, []);

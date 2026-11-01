@@ -37,8 +37,9 @@ internal object WhatsAppAudioPreserver {
   private val DOCUMENT_EXTENSIONS = setOf(
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "odt", "zip",
   )
-  // Vídeo sobe direto no Drive (é pesado). Não entra no observador que copia para o app.
+  // Vídeo sobe direto no Drive (é pesado). O observador avisa o backup, mas não copia no app.
   private val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "mov", "mkv", "webm", "3gp")
+  private const val VIDEO_NOTIFY_DEBOUNCE_MS = 3_000L
 
   // Documentos também entram no observador ao vivo: se o remetente apagar depois do download,
   // a cópia local já existe para o Drive e a aba Docs.
@@ -75,6 +76,9 @@ internal object WhatsAppAudioPreserver {
   private val lock = Any()
   private val worker = Executors.newSingleThreadExecutor()
   private val observers = mutableListOf<RecursiveFileObserver>()
+  private val observedPaths = HashSet<String>()
+  @Volatile
+  private var lastVideoNotifyAt = 0L
 
   /** Android 11+ com acesso a todos os arquivos concedido. */
   fun isSupported(): Boolean =
@@ -87,13 +91,11 @@ internal object WhatsAppAudioPreserver {
       if (!isSupported()) return
       roots = existingRoots()
       if (roots.isEmpty()) return
-      // Observadores ao vivo: criados uma única vez.
-      if (observers.isEmpty()) {
-        roots.forEach { root ->
-          RecursiveFileObserver(root) { file -> submit(appContext, file) }
-            .also { it.start() }
-            .let(observers::add)
-        }
+      roots.forEach { root ->
+        if (!observedPaths.add(root.absolutePath)) return@forEach
+        RecursiveFileObserver(root) { file -> submit(appContext, file) }
+          .also { it.start() }
+          .let(observers::add)
       }
     }
     // Varredura de recuperação a cada chamada (inclui o retorno do app ao primeiro plano),
@@ -104,12 +106,13 @@ internal object WhatsAppAudioPreserver {
   fun stop() = synchronized(lock) {
     observers.forEach { it.stop() }
     observers.clear()
+    observedPaths.clear()
   }
 
   private fun existingRoots(): List<File> {
     @Suppress("DEPRECATION")
     val base = Environment.getExternalStorageDirectory() ?: return emptyList()
-    return (CANDIDATE_RELATIVE_ROOTS + DOCUMENT_RELATIVE_ROOTS)
+    return (CANDIDATE_RELATIVE_ROOTS + DOCUMENT_RELATIVE_ROOTS + VIDEO_RELATIVE_ROOTS)
       .map { File(base, it) }
       .filter { it.isDirectory }
   }
@@ -117,18 +120,39 @@ internal object WhatsAppAudioPreserver {
   /** Copia o que já está no disco dentro da janela recente, para não perder mídia acabada de chegar. */
   private fun scanExisting(context: Context, roots: List<File>) {
     val cutoff = System.currentTimeMillis() - INITIAL_SCAN_WINDOW_MS
+    var sawVideo = false
     roots.forEach { root ->
       runCatching {
         root.walkTopDown()
-          .filter { it.isFile && isMedia(it.name) && it.lastModified() >= cutoff }
+          .filter { it.isFile && it.lastModified() >= cutoff && (isMedia(it.name) || isVideo(it.name)) }
           .sortedByDescending { it.lastModified() }
-          .forEach { preserve(context, it) }
+          .forEach { file ->
+            if (isVideo(file.name)) {
+              if (file.length() > 0L) sawVideo = true
+            } else {
+              preserve(context, file)
+            }
+          }
       }
     }
+    if (sawVideo) notifyVideoReady()
   }
 
   private fun submit(context: Context, file: File) {
-    worker.execute { preserve(context, file) }
+    worker.execute {
+      if (isVideo(file.name)) {
+        if (file.isFile && file.length() > 0L) notifyVideoReady()
+        return@execute
+      }
+      preserve(context, file)
+    }
+  }
+
+  private fun notifyVideoReady() {
+    val now = System.currentTimeMillis()
+    if (now - lastVideoNotifyAt < VIDEO_NOTIFY_DEBOUNCE_MS) return
+    lastVideoNotifyAt = now
+    OtherSideNotificationCaptureModule.getInstance()?.emitWhatsAppVideoReady()
   }
 
   private fun preserve(context: Context, file: File) {

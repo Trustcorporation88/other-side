@@ -81,6 +81,7 @@ class WhatsAppAudioPreserverTest {
     assertFalse(WhatsAppAudioPreserver.isMedia("VID-20251012-WA0005.mp4"))
     assertTrue(WhatsAppAudioPreserver.isAnyMedia("VID-20251012-WA0005.mp4"))
     assertEquals(PreservedAudio.KIND_VIDEO, WhatsAppAudioPreserver.kindOf("VID-20251012-WA0005.mp4"))
+    assertEquals(PreservedAudio.KIND_VIDEO, WhatsAppAudioPreserver.kindOf("VID-20261101-WA0001.mp4"))
   }
 
   @Test
