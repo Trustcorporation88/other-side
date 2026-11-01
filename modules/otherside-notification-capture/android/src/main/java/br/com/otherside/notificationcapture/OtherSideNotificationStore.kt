@@ -54,7 +54,6 @@ internal data class CapturedNotification(
 internal object OtherSideNotificationStore {
   private const val PREFS_NAME = "otherside_notification_capture"
   private const val RECORDS_KEY = "records"
-  private const val MAX_RECORDS = 200
   private val lock = Any()
 
   fun save(context: Context, notification: CapturedNotification): Boolean = synchronized(lock) {
@@ -66,14 +65,13 @@ internal object OtherSideNotificationStore {
       if (existing.optString("id") == notification.id) return false
     }
 
-    val updated = JSONArray().apply {
+    val merged = JSONArray().apply {
       put(notification.toJson())
       for (index in 0 until records.length()) {
-        if (length() >= MAX_RECORDS) break
         records.optJSONObject(index)?.let(::put)
       }
     }
-    writeJson(context, updated)
+    writeJson(context, NotificationAccountCap.cap(merged))
     true
   }
 

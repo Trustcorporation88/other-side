@@ -124,7 +124,7 @@ export default function MessagesScreen() {
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionEyebrow}>HISTÓRICO LOCAL</Text>
+            <Text style={styles.sectionEyebrow}>HISTÓRICO LOCAL · ATÉ 200 POR CONTA</Text>
             <Text style={styles.sectionTitle}>Mensagens preservadas</Text>
           </View>
           <Text style={styles.count}>{filteredNotifications.length}</Text>
