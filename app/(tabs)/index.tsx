@@ -123,11 +123,11 @@ export default function MessagesScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>HISTÓRICO LOCAL · ATÉ 200 POR CONTA</Text>
+          <Text style={styles.sectionEyebrow}>HISTÓRICO LOCAL · ATÉ 200 POR CONTA</Text>
+          <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Mensagens preservadas</Text>
+            <Text style={styles.count}>{filteredNotifications.length}</Text>
           </View>
-          <Text style={styles.count}>{filteredNotifications.length}</Text>
         </View>
 
         {accounts.length > 1 && (
@@ -342,28 +342,34 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   sectionHeader: {
-    alignItems: 'flex-end',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 14,
   },
   sectionEyebrow: {
     color: colors.muted,
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1.6,
+    letterSpacing: 1.1,
     marginBottom: 6,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
   },
   sectionTitle: {
     color: colors.white,
+    flex: 1,
     fontSize: 21,
     fontWeight: '700',
     letterSpacing: -0.4,
   },
   count: {
     color: colors.blueSoft,
+    flexShrink: 0,
     fontSize: 28,
     fontWeight: '700',
+    minWidth: 36,
+    textAlign: 'right',
   },
   accountRow: {
     flexDirection: 'row',
