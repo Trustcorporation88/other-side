@@ -10,6 +10,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Preserva notas de voz, fotos e documentos do WhatsApp copiando o arquivo para o armazenamento
@@ -79,6 +80,8 @@ internal object WhatsAppAudioPreserver {
   private val observedPaths = HashSet<String>()
   @Volatile
   private var lastVideoNotifyAt = 0L
+  private val scanQueued = AtomicBoolean(false)
+  private const val SCAN_BATCH = 40
 
   /** Android 11+ com acesso a todos os arquivos concedido. */
   fun isSupported(): Boolean =
@@ -99,8 +102,15 @@ internal object WhatsAppAudioPreserver {
       }
     }
     // Varredura de recuperação a cada chamada (inclui o retorno do app ao primeiro plano),
-    // pois o inotify do Android 11+ pode perder eventos em alguns aparelhos.
-    worker.execute { scanExisting(appContext, roots) }
+    // pois o inotify do Android 11+ pode perder eventos em alguns aparelhos. Uma só na fila.
+    if (!scanQueued.compareAndSet(false, true)) return
+    worker.execute {
+      try {
+        scanExisting(appContext, roots)
+      } finally {
+        scanQueued.set(false)
+      }
+    }
   }
 
   fun stop() = synchronized(lock) {
@@ -121,21 +131,43 @@ internal object WhatsAppAudioPreserver {
   private fun scanExisting(context: Context, roots: List<File>) {
     val cutoff = System.currentTimeMillis() - INITIAL_SCAN_WINDOW_MS
     var sawVideo = false
+    val missing = ArrayList<File>()
     roots.forEach { root ->
       runCatching {
         root.walkTopDown()
-          .filter { it.isFile && it.lastModified() >= cutoff && (isMedia(it.name) || isVideo(it.name)) }
-          .sortedByDescending { it.lastModified() }
+          .filter { it.isFile && it.lastModified() >= cutoff && it.length() > 0L }
           .forEach { file ->
             if (isVideo(file.name)) {
-              if (file.length() > 0L) sawVideo = true
-            } else {
-              preserve(context, file)
+              sawVideo = true
+            } else if (
+              isMedia(file.name) &&
+              !PreservedAudioStore.hasSameFile(context, file.absolutePath, file.length())
+            ) {
+              missing.add(file)
             }
           }
       }
     }
     if (sawVideo) notifyVideoReady()
+    if (missing.isEmpty()) return
+
+    // Mais recentes primeiro, e nunca mais do que cabe no índice de cada tipo.
+    missing.sortByDescending { it.lastModified() }
+    val perKind = HashMap<String, Int>()
+    val toCopy = missing.filter { file ->
+      val kind = kindOf(file.name)
+      val used = perKind[kind] ?: 0
+      val limit = PreservedMediaCap.DEFAULT_LIMITS[kind] ?: 0
+      if (used >= limit) return@filter false
+      perKind[kind] = used + 1
+      true
+    }
+
+    toCopy.chunked(SCAN_BATCH).forEach { batch ->
+      val copied = batch.mapNotNull { copyToApp(context, it) }
+      val saved = PreservedAudioStore.saveAll(context, copied)
+      saved.firstOrNull()?.let { OtherSideNotificationCaptureModule.getInstance()?.emitAudioPreserved(it) }
+    }
   }
 
   private fun submit(context: Context, file: File) {
@@ -156,9 +188,17 @@ internal object WhatsAppAudioPreserver {
   }
 
   private fun preserve(context: Context, file: File) {
+    if (!isMedia(file.name) || !file.isFile || file.length() == 0L) return
+    if (PreservedAudioStore.hasSameFile(context, file.absolutePath, file.length())) return
+    val media = copyToApp(context, file) ?: return
+    if (PreservedAudioStore.save(context, media)) {
+      OtherSideNotificationCaptureModule.getInstance()?.emitAudioPreserved(media)
+    }
+  }
+
+  /** Copia o arquivo para o armazenamento do app, sem mexer no índice. */
+  private fun copyToApp(context: Context, file: File): PreservedAudio? {
     try {
-      if (!isMedia(file.name) || !file.isFile || file.length() == 0L) return
-      if (PreservedAudioStore.hasSameFile(context, file.absolutePath, file.length())) return
       val sourceKey = sourceKey(file)
 
       val destDir = File(context.filesDir, DEST_DIR).apply { mkdirs() }
@@ -171,7 +211,7 @@ internal object WhatsAppAudioPreserver {
       // Miniatura só para imagens: mantém a galeria leve e sobrevive ao apagar o arquivo cheio.
       val thumbPath = if (kind == PreservedAudio.KIND_IMAGE) writeThumbnail(context, dest, id).orEmpty() else ""
 
-      val media = PreservedAudio(
+      return PreservedAudio(
         id = id,
         sourceKey = sourceKey,
         fileName = file.name,
@@ -184,11 +224,9 @@ internal object WhatsAppAudioPreserver {
         kind = kind,
         thumbPath = thumbPath,
       )
-      if (PreservedAudioStore.save(context, media)) {
-        OtherSideNotificationCaptureModule.getInstance()?.emitAudioPreserved(media)
-      }
     } catch (error: Exception) {
       Log.e(TAG, "Não foi possível preservar a mídia", error)
+      return null
     }
   }
 
