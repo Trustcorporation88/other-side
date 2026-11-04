@@ -67,7 +67,7 @@ type NativeModule = {
   requestAllFilesAccess: () => void;
   startAudioPreservation: () => void;
   getPreservedAudios: () => PreservedAudio[];
-  getAllWhatsAppMedia: () => WhatsAppMediaItem[];
+  getAllWhatsAppMedia: () => Promise<WhatsAppMediaItem[]>;
   hasGalleryAccess: () => boolean;
   isOnWifi: () => boolean;
   isCharging: () => boolean;
@@ -186,9 +186,10 @@ export function getPreservedAudios(): PreservedAudio[] {
   }
 }
 
-export function getAllWhatsAppMedia(): WhatsAppMediaItem[] {
+/** Percorre as pastas do WhatsApp fora da thread do JS (milhares de arquivos travavam a tela). */
+export async function getAllWhatsAppMedia(): Promise<WhatsAppMediaItem[]> {
   try {
-    return asArray(nativeModule?.getAllWhatsAppMedia());
+    return asArray(await nativeModule?.getAllWhatsAppMedia());
   } catch (_error) {
     return [];
   }

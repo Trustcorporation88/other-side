@@ -94,9 +94,11 @@ class OtherSideNotificationCaptureModule : Module() {
       Unit
     }
 
-    Function("getAllWhatsAppMedia") {
-      val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any>>()
-      WhatsAppAudioPreserver.listAllMedia(context)
+    AsyncFunction("getAllWhatsAppMedia") Coroutine { ->
+      val context = appContext.reactContext ?: return@Coroutine emptyList<Map<String, Any>>()
+      withContext(Dispatchers.IO) {
+        WhatsAppAudioPreserver.listAllMedia(context)
+      }
     }
 
     Function("hasGalleryAccess") {

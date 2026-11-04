@@ -440,7 +440,7 @@ export async function syncNow(
     }
     if (recordChanged) writeRecord(record);
 
-    const mediaItems = collectMediaItems();
+    const mediaItems = await collectMediaItems();
     const gallery = await collectGalleryItems();
     const gallerySkipped = gallery.skipped;
     const settings = readBackupSettings();
@@ -557,7 +557,7 @@ function isAlreadyUploaded(
   return byId.has(known);
 }
 
-function collectMediaItems(): UploadItem[] {
+async function collectMediaItems(): Promise<UploadItem[]> {
   const uploadMap = new Map<string, UploadItem>();
   const add = (item: {
     id: string;
@@ -582,7 +582,7 @@ function collectMediaItems(): UploadItem[] {
       video: item.kind === 'video',
     });
   };
-  for (const media of getAllWhatsAppMedia()) add(media);
+  for (const media of await getAllWhatsAppMedia()) add(media);
   for (const local of getPreservedAudios()) add(local);
   return [...uploadMap.values()];
 }
@@ -678,22 +678,41 @@ async function syncMessages(
   }
 }
 
-// Itens mais antigos que isto, já enviados ao Drive, têm a cópia local apagada (fica no Drive).
+// Fotos e documentos mais antigos que isto, já enviados ao Drive, têm a cópia local apagada.
 const EVICTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// As fotos mais recentes ficam inteiras no aparelho, seja qual for a idade.
+const KEEP_RECENT_LOCAL_IMAGES = 300;
 
 /** Id do arquivo no Drive para um item preservado, ou null se ainda não subiu. */
-export function driveFileIdFor(id: string): string | null {
+export function driveFileIdFor(id: string, fileName?: string, sizeBytes?: number): string | null {
   const record = readRecord();
-  return record[id] ?? null;
+  if (record[id]) return record[id];
+  if (fileName && sizeBytes && sizeBytes > 0) return record[ledgerKey(fileName, sizeBytes)] ?? null;
+  return null;
 }
 
-/** Apaga a cópia local (arquivo cheio) dos itens antigos já no Drive, mantendo índice e miniatura. */
+/**
+ * Apaga a cópia local (arquivo cheio) das fotos e documentos antigos já no Drive, mantendo
+ * índice e miniatura. Áudio fica sempre no aparelho: é pequeno e precisa tocar sem rede.
+ * As KEEP_RECENT_LOCAL_IMAGES fotos mais recentes também nunca saem.
+ */
 function evictOldLocalFiles(record: Record<string, string>): void {
   const cutoff = Date.now() - EVICTION_WINDOW_MS;
-  for (const item of getPreservedAudios()) {
+  const whenOf = (item: { originalModifiedAt?: number; preservedAt: number }) =>
+    item.originalModifiedAt || item.preservedAt;
+  const items = getPreservedAudios()
+    .filter((item) => item.kind !== 'audio')
+    .sort((a, b) => whenOf(b) - whenOf(a));
+  const keptImages = new Set(
+    items
+      .filter((item) => item.kind === 'image')
+      .slice(0, KEEP_RECENT_LOCAL_IMAGES)
+      .map((item) => item.id),
+  );
+  for (const item of items) {
+    if (keptImages.has(item.id)) continue;
     if (!record[item.id] && !record[ledgerKey(item.fileName, item.sizeBytes)]) continue;
-    const when = item.originalModifiedAt || item.preservedAt;
-    if (when >= cutoff) continue;
+    if (whenOf(item) >= cutoff) continue;
     try {
       const local = new File(item.uri);
       if (local.exists) local.delete();

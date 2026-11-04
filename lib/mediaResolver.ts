@@ -41,7 +41,7 @@ export async function resolveMediaUri(item: PreservedAudio): Promise<string | nu
     // segue para o download
   }
 
-  const driveId = driveFileIdFor(item.id);
+  const driveId = driveFileIdFor(item.id, item.fileName, item.sizeBytes);
   if (!driveId) return null;
   const token = await getAccessToken();
   if (!token) return null;

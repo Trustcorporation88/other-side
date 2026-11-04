@@ -111,7 +111,7 @@ export function readRecentDocuments(): RecentDocument[] {
   return withLocalUri(readIndex());
 }
 
-function candidatesFrom(input: MaterializeInput): DocumentCandidate[] {
+async function candidatesFrom(input: MaterializeInput): Promise<DocumentCandidate[]> {
   const candidates: DocumentCandidate[] = [];
 
   for (const saved of readIndex()) {
@@ -126,7 +126,7 @@ function candidatesFrom(input: MaterializeInput): DocumentCandidate[] {
   }
 
   try {
-    for (const media of getAllWhatsAppMedia()) {
+    for (const media of await getAllWhatsAppMedia()) {
       if (media.kind !== 'document' || !isDocumentName(media.fileName) || media.sizeBytes <= 0) continue;
       const moment = media.originalModifiedAt || dateFromDocumentName(media.fileName);
       candidates.push({
@@ -217,7 +217,7 @@ async function ensureLocal(item: DocumentCandidate, token: string | null): Promi
 }
 
 async function doMaterialize(input: MaterializeInput): Promise<RecentDocument[]> {
-  const ranked = pickRecentDocuments(candidatesFrom(input), 40);
+  const ranked = pickRecentDocuments(await candidatesFrom(input), 40);
   const kept: RecentDocument[] = [];
   for (const item of ranked) {
     if (kept.length >= RECENT_DOCUMENT_LIMIT) break;
