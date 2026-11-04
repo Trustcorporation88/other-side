@@ -40,6 +40,8 @@ android {
 
 dependencies {
   testImplementation "junit:junit:4.13.2"
+  // O org.json do android.jar é só stub ("not mocked") nos testes JVM.
+  testImplementation "org.json:json:20240303"
   testImplementation "org.robolectric:robolectric:4.14.1"
 }
 
