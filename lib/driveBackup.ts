@@ -678,19 +678,25 @@ async function syncMessages(
   }
 }
 
-// Itens mais antigos que isto, já enviados ao Drive, têm a cópia local apagada (fica no Drive).
+// Fotos e documentos mais antigos que isto, já enviados ao Drive, têm a cópia local apagada.
 const EVICTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Id do arquivo no Drive para um item preservado, ou null se ainda não subiu. */
-export function driveFileIdFor(id: string): string | null {
+export function driveFileIdFor(id: string, fileName?: string, sizeBytes?: number): string | null {
   const record = readRecord();
-  return record[id] ?? null;
+  if (record[id]) return record[id];
+  if (fileName && sizeBytes && sizeBytes > 0) return record[ledgerKey(fileName, sizeBytes)] ?? null;
+  return null;
 }
 
-/** Apaga a cópia local (arquivo cheio) dos itens antigos já no Drive, mantendo índice e miniatura. */
+/**
+ * Apaga a cópia local (arquivo cheio) das fotos e documentos antigos já no Drive, mantendo
+ * índice e miniatura. Áudio fica sempre no aparelho: é pequeno e precisa tocar sem rede.
+ */
 function evictOldLocalFiles(record: Record<string, string>): void {
   const cutoff = Date.now() - EVICTION_WINDOW_MS;
   for (const item of getPreservedAudios()) {
+    if (item.kind === 'audio') continue;
     if (!record[item.id] && !record[ledgerKey(item.fileName, item.sizeBytes)]) continue;
     const when = item.originalModifiedAt || item.preservedAt;
     if (when >= cutoff) continue;

@@ -75,7 +75,6 @@ internal data class PreservedAudio(
 internal object PreservedAudioStore {
   private const val PREFS_NAME = "otherside_preserved_audio"
   private const val RECORDS_KEY = "records"
-  private const val MAX_RECORDS = 500
   private val lock = Any()
 
   fun has(context: Context, sourceKey: String): Boolean = synchronized(lock) {
@@ -101,15 +100,23 @@ internal object PreservedAudioStore {
     for (index in 0 until records.length()) {
       if (records.optJSONObject(index)?.optString("sourceKey") == audio.sourceKey) return false
     }
-    val updated = JSONArray().apply {
+    val merged = JSONArray().apply {
       put(audio.toJson())
       for (index in 0 until records.length()) {
-        if (length() >= MAX_RECORDS) break
         records.optJSONObject(index)?.let(::put)
       }
     }
-    writeJson(context, updated)
+    val capped = PreservedMediaCap.cap(merged)
+    writeJson(context, capped.kept)
+    capped.dropped.forEach(::deleteFiles)
     true
+  }
+
+  /** Um registro que sai do índice não pode deixar o arquivo órfão ocupando espaço. */
+  private fun deleteFiles(record: JSONObject) {
+    listOf(record.optString("localPath"), record.optString("thumbPath"))
+      .filter { it.isNotEmpty() }
+      .forEach { path -> runCatching { java.io.File(path).delete() } }
   }
 
   fun getAll(context: Context): List<PreservedAudio> = synchronized(lock) {
