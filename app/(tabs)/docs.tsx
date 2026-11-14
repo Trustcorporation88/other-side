@@ -4,7 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { openRecentDocument, type RecentDocument } from '@/lib/recentDocuments';
+import { documentLinkKey, useMessageMedia } from '@/hooks/useMessageMedia';
 import { useRecentDocuments } from '@/hooks/useRecentDocuments';
+import { senderLabel } from '@/lib/messageMedia';
 
 const colors = {
   navy: '#071527',
@@ -38,6 +40,7 @@ function formatMoment(timestamp: number): string {
 
 export default function DocsScreen() {
   const { documents, refreshing } = useRecentDocuments();
+  const { senderByDocument } = useMessageMedia();
   const [openingId, setOpeningId] = useState<string | null>(null);
 
   async function openDocument(document: RecentDocument) {
@@ -87,6 +90,7 @@ export default function DocsScreen() {
           <View style={styles.list}>
             {documents.map((document) => {
               const opening = openingId === document.id;
+              const sender = senderByDocument.get(documentLinkKey(document.fileName, document.sizeBytes));
               return (
                 <Pressable
                   key={document.id}
@@ -102,6 +106,11 @@ export default function DocsScreen() {
                     <Text style={styles.cardTitle} numberOfLines={2}>
                       {document.fileName}
                     </Text>
+                    {sender && (
+                      <Text style={styles.cardSender} numberOfLines={1}>
+                        De {senderLabel(sender)}
+                      </Text>
+                    )}
                     <Text style={styles.cardMeta}>
                       {formatMoment(document.moment)}
                       {document.moment ? ' · ' : ''}
@@ -178,6 +187,7 @@ const styles = StyleSheet.create({
   cardIconGlyph: { color: colors.blueSoft, fontSize: 18, fontWeight: '700' },
   cardCopy: { flex: 1 },
   cardTitle: { color: colors.white, fontSize: 15, fontWeight: '700' },
+  cardSender: { color: colors.blueSoft, fontSize: 12, marginTop: 4 },
   cardMeta: { color: colors.muted, fontSize: 12, marginTop: 4 },
   openGlyph: { color: colors.blue, fontSize: 20, marginLeft: 10 },
   pressed: { opacity: 0.74 },

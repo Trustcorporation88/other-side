@@ -14,7 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { type PreservedAudio } from '@otherside/notification-capture';
+import { useMessageMedia } from '@/hooks/useMessageMedia';
 import { usePreservedMedia } from '@/hooks/usePreservedMedia';
+import { senderLabel } from '@/lib/messageMedia';
 import { resolveMediaUri } from '@/lib/mediaResolver';
 
 const colors = {
@@ -42,9 +44,11 @@ function formatMoment(timestamp: number): string {
 export default function FotosScreen() {
   const { items, supported, hasAccess, nativeAvailable, requestAccess, remove, clearAll } =
     usePreservedMedia('image');
+  const { senderByMedia } = useMessageMedia();
   const [selected, setSelected] = useState<PreservedAudio | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
+  const selectedSender = selected ? senderByMedia.get(selected.id) : undefined;
 
   async function openPhoto(photo: PreservedAudio) {
     setSelected(photo);
@@ -183,20 +187,28 @@ export default function FotosScreen() {
               <View key={group.key} style={styles.dayGroup}>
                 <Text style={styles.dayHeader}>{group.label}</Text>
                 <View style={styles.grid}>
-                  {group.items.map((photo) => (
-                    <Pressable
-                      key={photo.id}
-                      accessibilityRole="imagebutton"
-                      accessibilityLabel="Abrir foto"
-                      onPress={() => void openPhoto(photo)}
-                      style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}>
-                      <Image
-                        source={{ uri: photo.thumbUri || photo.uri }}
-                        style={styles.thumbImage}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
-                  ))}
+                  {group.items.map((photo) => {
+                    const sender = senderByMedia.get(photo.id);
+                    return (
+                      <Pressable
+                        key={photo.id}
+                        accessibilityRole="imagebutton"
+                        accessibilityLabel={sender ? `Abrir foto de ${sender.sender}` : 'Abrir foto'}
+                        onPress={() => void openPhoto(photo)}
+                        style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}>
+                        <Image
+                          source={{ uri: photo.thumbUri || photo.uri }}
+                          style={styles.thumbImage}
+                          resizeMode="cover"
+                        />
+                        {sender && (
+                          <Text style={styles.thumbSender} numberOfLines={1}>
+                            {sender.sender}
+                          </Text>
+                        )}
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             ))}
@@ -252,9 +264,16 @@ export default function FotosScreen() {
             )}
           </View>
           {selected && (
-            <Text style={styles.viewerMeta}>
-              {formatMoment(selected.originalModifiedAt || selected.preservedAt)}
-            </Text>
+            <View style={styles.viewerFooter}>
+              {selectedSender && (
+                <Text style={styles.viewerSender} numberOfLines={2}>
+                  De {senderLabel(selectedSender)}
+                </Text>
+              )}
+              <Text style={styles.viewerMeta}>
+                {formatMoment(selected.originalModifiedAt || selected.preservedAt)}
+              </Text>
+            </View>
           )}
         </View>
       </Modal>
@@ -417,6 +436,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   thumbImage: { height: '100%', width: '100%' },
+  thumbSender: {
+    backgroundColor: 'rgba(3, 9, 18, 0.72)',
+    bottom: 0,
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '700',
+    left: 0,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    position: 'absolute',
+    right: 0,
+  },
   privacyNote: { alignItems: 'flex-start', flexDirection: 'row', marginTop: 26, paddingHorizontal: 4 },
   privacyLock: { color: colors.blue, fontSize: 14, marginRight: 11, marginTop: 2 },
   privacyCopy: { flex: 1 },
@@ -441,10 +472,11 @@ const styles = StyleSheet.create({
   viewerCenter: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center', paddingHorizontal: 32 },
   viewerHint: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
   viewerImage: { flex: 1, width: '100%' },
+  viewerFooter: { gap: 4, paddingHorizontal: 24, paddingVertical: 16 },
+  viewerSender: { color: colors.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   viewerMeta: {
     color: colors.muted,
     fontSize: 13,
-    paddingVertical: 16,
     textAlign: 'center',
   },
 });

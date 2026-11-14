@@ -41,6 +41,9 @@ jobs:
       - name: Packaging regression tests
         run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
+      - name: Message to media link tests
+        run: node --experimental-strip-types --test scripts/test_message_media.ts
+
       - name: Expo web export
         run: npx expo export --platform web
 
