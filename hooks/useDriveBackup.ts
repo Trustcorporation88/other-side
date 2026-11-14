@@ -16,10 +16,13 @@ import {
   isDriveConnected,
 } from '@/lib/googleDrive';
 import {
+  auditBackup,
   backfillGallery,
   pendingCount,
+  syncEverything,
   syncNow,
   uploadedCount,
+  type BackupAudit,
   type GallerySkipReason,
 } from '@/lib/driveBackup';
 import { readBackupSettings, writeBackupSettings, type BackupSettings } from '@/lib/backupSettings';
@@ -36,6 +39,8 @@ export function useDriveBackup() {
   const [settings, setSettings] = useState<BackupSettings>(() => readBackupSettings());
   const [galleryAccess, setGalleryAccess] = useState(false);
   const [gallerySkipped, setGallerySkipped] = useState<GallerySkipReason>(null);
+  const [audit, setAudit] = useState<BackupAudit | null>(null);
+  const [auditing, setAuditing] = useState(false);
   const syncingRef = useRef(false);
 
   const refresh = useCallback(() => {
@@ -89,6 +94,36 @@ export function useDriveBackup() {
       refresh();
     }
   }, [refresh]);
+
+  const runAudit = useCallback(async (): Promise<BackupAudit | null> => {
+    if (!isNativeAvailable) return null;
+    setAuditing(true);
+    try {
+      const result = await auditBackup();
+      setAudit(result);
+      return result;
+    } catch (_error) {
+      return null;
+    } finally {
+      setAuditing(false);
+    }
+  }, []);
+
+  const sendMissing = useCallback(async () => {
+    if (!isNativeAvailable || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      const result = await syncEverything((done, total) => setProgress({ done, total }));
+      setGallerySkipped(result.gallerySkipped);
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+      setProgress(null);
+      refresh();
+    }
+    await runAudit();
+  }, [refresh, runAudit]);
 
   const requestGalleryPermission = useCallback(async () => {
     const granted = await requestGalleryAccess();
@@ -164,6 +199,10 @@ export function useDriveBackup() {
     disconnect,
     sync,
     backfill,
+    audit,
+    auditing,
+    runAudit,
+    sendMissing,
     requestGalleryPermission,
     setGalleryEnabled: (enabled: boolean) => applySettings({ ...readBackupSettings(), galleryEnabled: enabled }),
     setIncludeWhatsAppImages: (enabled: boolean) =>
