@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { File } from 'expo-file-system';
 
-import { openContentUri, type PreservedAudio } from '@otherside/notification-capture';
-import { useMessageMedia } from '@/hooks/useMessageMedia';
+import {
+  deletePreservedAudio,
+  getPreservedAudios,
+  openContentUri,
+  type PreservedAudio,
+} from '@otherside/notification-capture';
+import { refreshMessageMedia, useMessageMedia } from '@/hooks/useMessageMedia';
 import { senderLabel } from '@/lib/messageMedia';
-import { resolveMediaUri } from '@/lib/mediaResolver';
+import { discardCachedCopy, resolveMediaUri } from '@/lib/mediaResolver';
 import { documentMimeType } from '@/lib/recentDocuments';
 import { whatsappAccountLabel } from '@/lib/whatsappAccount';
 
@@ -58,12 +63,14 @@ function openDocument(uri: string, fileName: string): boolean {
 }
 
 export default function MediaScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { loaded, preservedById, mediaById, senderByMedia } = useMessageMedia();
 
   const item = useMemo<PreservedAudio | null>(() => {
     if (!id) return null;
-    const preserved = preservedById.get(id);
+    // Foto que acabou de chegar pode abrir pela aba Fotos antes do recálculo das ligações.
+    const preserved = preservedById.get(id) ?? getPreservedAudios().find((entry) => entry.id === id);
     if (preserved) return preserved;
     const linked = mediaById.get(id);
     if (!linked) return null;
@@ -107,12 +114,55 @@ export default function MediaScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey]);
 
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const imageFailed = uri != null && failedUri === uri;
+
+  function onImageError() {
+    if (!item || !uri) return;
+    // Cópia do cache que não abre é descartada: a próxima tentativa baixa de novo do Drive.
+    if (uri !== item.uri) discardCachedCopy(item);
+    setFailedUri(uri);
+  }
+
+  const canDelete = item != null && item.kind === 'image' && item.localPath !== '';
+
+  function confirmDelete() {
+    if (!item) return;
+    Alert.alert('Apagar foto', 'A cópia local será removida deste aparelho.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Apagar',
+        style: 'destructive',
+        onPress: () => {
+          deletePreservedAudio(item.id);
+          refreshMessageMedia();
+          router.back();
+        },
+      },
+    ]);
+  }
+
   const title = item ? TITLES[item.kind] ?? 'Mídia' : 'Mídia';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <StatusBar style="light" />
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerRight: canDelete
+            ? () => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Apagar foto"
+                  onPress={confirmDelete}
+                  style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
+                  <Text style={styles.headerButtonText}>🗑</Text>
+                </Pressable>
+              )
+            : undefined,
+        }}
+      />
 
       <View style={styles.senderCard}>
         <Text style={styles.senderEyebrow}>
@@ -143,10 +193,25 @@ export default function MediaScreen() {
             <ActivityIndicator color={colors.blueSoft} />
             <Text style={styles.hint}>Abrindo… (pode baixar do Drive)</Text>
           </View>
-        ) : state === 'missing' || !uri ? (
-          <Centered text="Não foi possível abrir — sem cópia no aparelho nem no Drive, ou sem conexão." />
+        ) : state === 'missing' || !uri || imageFailed ? (
+          <View style={styles.center}>
+            {item.kind === 'image' && item.thumbUri ? (
+              <Image source={{ uri: item.thumbUri }} style={styles.thumbFallback} resizeMode="contain" />
+            ) : null}
+            <Text style={styles.hint}>
+              {item.kind === 'image' && item.thumbUri
+                ? 'Só a miniatura está no aparelho. A foto inteira não abriu — sem cópia no Drive ou sem conexão. Tente de novo mais tarde.'
+                : 'Não foi possível abrir — sem cópia no aparelho nem no Drive, ou sem conexão.'}
+            </Text>
+          </View>
         ) : item.kind === 'image' ? (
-          <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+          <Image
+            key={uri}
+            source={{ uri }}
+            style={styles.image}
+            resizeMode="contain"
+            onError={onImageError}
+          />
         ) : item.kind === 'audio' ? (
           <AudioPanel uri={uri} />
         ) : (
@@ -246,6 +311,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', flex: 1, gap: 16, justifyContent: 'center', paddingHorizontal: 32 },
   hint: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
   preview: { height: 220, opacity: 0.5, width: '100%' },
+  thumbFallback: { height: 260, width: '100%' },
   image: { flex: 1, width: '100%' },
   playButton: {
     alignItems: 'center',
@@ -270,4 +336,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: '#061329', fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.74 },
+  headerButton: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 },
+  headerButtonText: { color: colors.white, fontSize: 18 },
 });
