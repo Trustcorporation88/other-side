@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   chooseFullestFolder,
+  driveIdCandidates,
   duplicateMonthFolderLosers,
   findExistingUpload,
   findMessagesFile,
@@ -141,4 +142,18 @@ test('mensagens.json fica no arquivo já registrado', () => {
   ];
   assert.equal(findMessagesFile(files, 'root', 'new')?.id, 'new');
   assert.equal(findMessagesFile(files, 'root')?.id, 'old');
+});
+
+test('cópia cortada no aparelho acha a versão inteira no Drive pelo nome', () => {
+  const record = {
+    'item-cortado': 'drive-cortado',
+    'ns:IMG-20261114-WA0071.jpg:65536': 'drive-cortado',
+    'ns:IMG-20261114-WA0071.jpg:250000': 'drive-inteiro',
+    'ns:IMG-20261114-WA0072.jpg:300000': 'outra-foto',
+  };
+  assert.deepEqual(driveIdCandidates(record, 'item-cortado', 'IMG-20261114-WA0071.jpg', 65536), [
+    'drive-cortado',
+    'drive-inteiro',
+  ]);
+  assert.deepEqual(driveIdCandidates({}, 'x', 'IMG-20261114-WA0071.jpg', 10), []);
 });

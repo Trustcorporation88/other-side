@@ -140,3 +140,17 @@ test('rótulo do remetente inclui o grupo só quando difere', () => {
   assert.equal(senderLabel({ sender: 'Ana', conversation: 'Ana' }), 'Ana');
   assert.equal(senderLabel({ sender: 'Ana', conversation: 'Família' }), 'Ana · Família');
 });
+
+test('cópia cortada trocada pela inteira mantém a ligação e o remetente', () => {
+  const first = mergeLinks(
+    [message('m', '📷 Foto', 0, { sender: 'Bruno', conversation: 'Grupo VIP' })],
+    [media('cortada', 'IMG-20261114-WA0071.jpg', 'image', 0.1, { sizeBytes: 65536 })],
+    { mediaByMessage: {}, media: {} },
+  );
+  assert.equal(first.stored.mediaByMessage.m, 'cortada');
+
+  const later = mergeLinks([], [media('inteira', 'IMG-20261114-WA0071.jpg', 'image', 0.1, { sizeBytes: 250000 })], first.stored);
+  assert.equal(later.mediaByMessage.get('m'), 'inteira');
+  assert.equal(later.senderByMedia.get('inteira')?.sender, 'Bruno');
+  assert.equal(later.mediaById.has('cortada'), false);
+});

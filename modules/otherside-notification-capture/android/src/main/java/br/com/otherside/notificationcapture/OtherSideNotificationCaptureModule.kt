@@ -175,6 +175,11 @@ class OtherSideNotificationCaptureModule : Module() {
       if (File(audio.localPath).isFile) "file://${audio.localPath}" else null
     }
 
+    Function("getOriginalMediaUri") { id: String ->
+      val context = appContext.reactContext ?: return@Function null
+      PreservedAudioStore.originalFile(context, id)?.let { "file://${it.absolutePath}" }
+    }
+
     Function("deletePreservedAudio") { id: String ->
       val context = appContext.reactContext ?: return@Function Unit
       PreservedAudioStore.find(context, id)?.let { runCatching { File(it.localPath).delete() } }

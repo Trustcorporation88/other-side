@@ -82,6 +82,7 @@ internal object WhatsAppAudioPreserver {
   private var lastVideoNotifyAt = 0L
   private val scanQueued = AtomicBoolean(false)
   private const val SCAN_BATCH = 40
+  private const val SETTLE_MS = 15_000L
 
   /** Android 11+ com acesso a todos os arquivos concedido. */
   fun isSupported(): Boolean =
@@ -129,13 +130,16 @@ internal object WhatsAppAudioPreserver {
 
   /** Copia o que já está no disco dentro da janela recente, para não perder mídia acabada de chegar. */
   private fun scanExisting(context: Context, roots: List<File>) {
-    val cutoff = System.currentTimeMillis() - INITIAL_SCAN_WINDOW_MS
+    val now = System.currentTimeMillis()
+    val cutoff = now - INITIAL_SCAN_WINDOW_MS
+    // Arquivo mexido agora pode estar no meio do download; o CLOSE_WRITE copia quando terminar.
+    val settledBefore = now - SETTLE_MS
     var sawVideo = false
     val missing = ArrayList<File>()
     roots.forEach { root ->
       runCatching {
         root.walkTopDown()
-          .filter { it.isFile && it.lastModified() >= cutoff && it.length() > 0L }
+          .filter { it.isFile && it.lastModified() in cutoff..settledBefore && it.length() > 0L }
           .forEach { file ->
             if (isVideo(file.name)) {
               sawVideo = true
@@ -199,6 +203,7 @@ internal object WhatsAppAudioPreserver {
   /** Copia o arquivo para o armazenamento do app, sem mexer no índice. */
   private fun copyToApp(context: Context, file: File): PreservedAudio? {
     try {
+      val sizeBefore = file.length()
       val sourceKey = sourceKey(file)
 
       val destDir = File(context.filesDir, DEST_DIR).apply { mkdirs() }
@@ -206,6 +211,11 @@ internal object WhatsAppAudioPreserver {
       val extension = file.extension.lowercase(Locale.ROOT)
       val dest = File(destDir, if (extension.isEmpty()) id else "$id.$extension")
       file.inputStream().use { input -> dest.outputStream().use(input::copyTo) }
+      if (file.length() != sizeBefore || dest.length() != sizeBefore) {
+        // O WhatsApp ainda estava gravando: a cópia ficaria cortada. O próximo evento copia de novo.
+        dest.delete()
+        return null
+      }
 
       val kind = kindOf(file.name)
       // Miniatura só para imagens: mantém a galeria leve e sobrevive ao apagar o arquivo cheio.
