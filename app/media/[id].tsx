@@ -13,8 +13,9 @@ import {
   type PreservedAudio,
 } from '@otherside/notification-capture';
 import { refreshMessageMedia, useMessageMedia } from '@/hooks/useMessageMedia';
+import { type DriveFailure } from '@/lib/mediaCache';
 import { senderLabel } from '@/lib/messageMedia';
-import { discardCachedCopy, resolveMediaUri } from '@/lib/mediaResolver';
+import { discardFailedCopy, resolveMedia, type MediaResolution } from '@/lib/mediaResolver';
 import { documentMimeType } from '@/lib/recentDocuments';
 import { whatsappAccountLabel } from '@/lib/whatsappAccount';
 
@@ -54,6 +55,19 @@ function formatDuration(seconds: number): string {
 
 type LoadState = 'loading' | 'ready' | 'missing';
 
+const KIND_NOUN: Record<string, string> = { image: 'A foto', audio: 'O áudio', document: 'O documento' };
+
+function failureMessage(reason: DriveFailure, detail: string, kind: string, localBroken: boolean): string {
+  const noun = KIND_NOUN[kind] ?? 'O arquivo';
+  const lead = localBroken
+    ? `A cópia neste aparelho está danificada.`
+    : `${noun} inteir${kind === 'image' ? 'a' : 'o'} não está mais neste aparelho.`;
+  if (reason === 'not_uploaded') return `${lead} Ainda não foi enviad${kind === 'image' ? 'a' : 'o'} ao Google Drive.`;
+  if (reason === 'drive_auth') return `${lead} Não foi possível entrar no Google Drive — confira a conta em Ajustes.`;
+  if (reason === 'offline') return `${lead} Sem conexão para baixar do Google Drive.`;
+  return `${lead} O Google Drive respondeu com erro${detail ? ` (${detail})` : ''}.`;
+}
+
 function openDocument(uri: string, fileName: string): boolean {
   try {
     return openContentUri(new File(uri).contentUri, documentMimeType(fileName));
@@ -92,37 +106,51 @@ export default function MediaScreen() {
   const sender = id ? senderByMedia.get(id) : undefined;
 
   const itemKey = item ? `${item.id}|${item.uri}` : '';
-  const [result, setResult] = useState<{ key: string; uri: string | null; openFailed: boolean } | null>(null);
-  const current = result?.key === itemKey ? result : null;
-  const state: LoadState = !current ? 'loading' : current.uri ? 'ready' : 'missing';
-  const uri = current?.uri ?? null;
+  const [skip, setSkip] = useState<string[]>([]);
+  const [attempt, setAttempt] = useState(0);
+  const loadKey = `${itemKey}#${attempt}#${skip.join('|')}`;
+  const [result, setResult] = useState<{ key: string; resolution: MediaResolution; openFailed: boolean } | null>(
+    null,
+  );
+  const current = result?.key === loadKey ? result : null;
+  const state: LoadState = !current ? 'loading' : current.resolution.uri ? 'ready' : 'missing';
+  const uri = current?.resolution.uri ?? null;
 
   useEffect(() => {
     if (!item) return;
     let cancelled = false;
-    const key = itemKey;
-    void resolveMediaUri(item).then((resolved) => {
+    const key = loadKey;
+    void resolveMedia(item, skip).then((resolution) => {
       if (cancelled) return;
       // Documento abre no app do Android assim que chega; depois, pelo botão.
-      const openFailed = item.kind === 'document' && resolved ? !openDocument(resolved, item.fileName) : false;
-      setResult({ key, uri: resolved, openFailed });
+      const openFailed =
+        item.kind === 'document' && resolution.uri ? !openDocument(resolution.uri, item.fileName) : false;
+      setResult({ key, resolution, openFailed });
     });
     return () => {
       cancelled = true;
     };
-    // Recarrega só quando muda o arquivo, não a cada recálculo das ligações.
+    // Recarrega só quando muda o arquivo ou a tentativa, não a cada recálculo das ligações.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemKey]);
-
-  const [failedUri, setFailedUri] = useState<string | null>(null);
-  const imageFailed = uri != null && failedUri === uri;
+  }, [loadKey]);
 
   function onImageError() {
     if (!item || !uri) return;
-    // Cópia do cache que não abre é descartada: a próxima tentativa baixa de novo do Drive.
-    if (uri !== item.uri) discardCachedCopy(item);
-    setFailedUri(uri);
+    // A cópia que não abre sai da lista; a próxima tentativa vai à fonte seguinte.
+    const failed = discardFailedCopy(item, uri);
+    setSkip((previous) => [...previous, ...failed]);
   }
+
+  function retry() {
+    setSkip([]);
+    setAttempt((value) => value + 1);
+  }
+
+  const resolution = current?.resolution;
+  const failureText =
+    resolution && resolution.uri === null && item
+      ? failureMessage(resolution.reason, resolution.detail, item.kind, skip.length > 0)
+      : '';
 
   const canDelete = item != null && item.kind === 'image' && item.localPath !== '';
 
@@ -193,16 +221,19 @@ export default function MediaScreen() {
             <ActivityIndicator color={colors.blueSoft} />
             <Text style={styles.hint}>Abrindo… (pode baixar do Drive)</Text>
           </View>
-        ) : state === 'missing' || !uri || imageFailed ? (
+        ) : state === 'missing' || !uri ? (
           <View style={styles.center}>
             {item.kind === 'image' && item.thumbUri ? (
               <Image source={{ uri: item.thumbUri }} style={styles.thumbFallback} resizeMode="contain" />
             ) : null}
-            <Text style={styles.hint}>
-              {item.kind === 'image' && item.thumbUri
-                ? 'Só a miniatura está no aparelho. A foto inteira não abriu — sem cópia no Drive ou sem conexão. Tente de novo mais tarde.'
-                : 'Não foi possível abrir — sem cópia no aparelho nem no Drive, ou sem conexão.'}
-            </Text>
+            <Text style={styles.hint}>{failureText}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={retry}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+              <Text style={styles.primaryButtonText}>Tentar de novo</Text>
+              <Text style={styles.primaryButtonText}>↻</Text>
+            </Pressable>
           </View>
         ) : item.kind === 'image' ? (
           <Image

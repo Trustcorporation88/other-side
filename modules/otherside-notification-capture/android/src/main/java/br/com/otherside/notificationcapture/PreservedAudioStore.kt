@@ -106,9 +106,10 @@ internal object PreservedAudioStore {
     for (index in 0 until current.length()) current.optJSONObject(index)?.let(all::add)
     all.sortByDescending(::momentOf)
 
-    val capped = PreservedMediaCap.cap(JSONArray(all))
+    val deduped = PartialCopyDedup.dedupe(JSONArray(all))
+    val capped = PreservedMediaCap.cap(deduped.kept)
     store(context, capped.kept)
-    capped.dropped.forEach(::deleteFiles)
+    (deduped.dropped + capped.dropped).forEach(::deleteFiles)
 
     val keptIds = HashSet<String>()
     for (index in 0 until capped.kept.length()) {
@@ -133,6 +134,14 @@ internal object PreservedAudioStore {
       if (record.optString("id") == id) return PreservedAudio.fromJson(record)
     }
     null
+  }
+
+  /** Arquivo original na pasta do WhatsApp, se ainda existir inteiro. */
+  fun originalFile(context: Context, id: String): File? {
+    val record = find(context, id) ?: return null
+    val path = PartialCopyDedup.sourcePathOf(record.sourceKey) ?: return null
+    val original = File(path)
+    return if (original.isFile && original.length() >= record.sizeBytes && original.length() > 0L) original else null
   }
 
   fun delete(context: Context, id: String) = synchronized(lock) {
@@ -176,6 +185,13 @@ internal object PreservedAudioStore {
       JSONArray(raw)
     } catch (_: Exception) {
       JSONArray()
+    }
+    // Repara índices antigos que guardaram a cópia cortada ao lado da inteira.
+    val deduped = PartialCopyDedup.dedupe(parsed)
+    if (deduped.dropped.isNotEmpty()) {
+      store(context, deduped.kept)
+      deduped.dropped.forEach(::deleteFiles)
+      return deduped.kept
     }
     remember(parsed)
     return parsed

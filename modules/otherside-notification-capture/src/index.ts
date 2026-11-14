@@ -78,6 +78,7 @@ type NativeModule = {
   deleteGalleryItems: (uris: string[]) => Promise<number>;
   openContentUri: (uri: string, mimeType: string) => boolean;
   getPreservedAudioUri: (id: string) => string | null;
+  getOriginalMediaUri?: (id: string) => string | null;
   deletePreservedAudio: (id: string) => void;
   clearPreservedAudios: () => void;
 };
@@ -289,6 +290,15 @@ export function addWhatsAppVideoReadyListener(listener: () => void) {
 export function getPreservedAudioUri(id: string): string | null {
   try {
     return nativeModule?.getPreservedAudioUri(id) ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+/** Arquivo original ainda inteiro na pasta do WhatsApp (precisa do APK novo; antes devolve null). */
+export function getOriginalMediaUri(id: string): string | null {
+  try {
+    return nativeModule?.getOriginalMediaUri?.(id) ?? null;
   } catch (_error) {
     return null;
   }

@@ -160,3 +160,33 @@ export function findMessagesFile(
   if (!chosen) return null;
   return pool.find((file) => file.id === chosen.id) ?? null;
 }
+
+/**
+ * Ids no Drive para baixar um arquivo, do mais certo ao provável: o registrado para este
+ * item, o de mesmo nome e tamanho e, por fim, os de mesmo nome e tamanho maior (o item no
+ * aparelho pode ser uma cópia cortada; a versão inteira pode ter subido também).
+ */
+export function driveIdCandidates(
+  record: Readonly<Record<string, string>>,
+  id: string,
+  fileName: string,
+  sizeBytes: number,
+): string[] {
+  const out: string[] = [];
+  const add = (value: string | undefined) => {
+    if (value && !out.includes(value)) out.push(value);
+  };
+  add(record[id]);
+  if (fileName && sizeBytes > 0) add(record[ledgerKey(fileName, sizeBytes)]);
+  if (fileName) {
+    const prefix = `ns:${fileName}:`;
+    const larger: { size: number; driveId: string }[] = [];
+    for (const key of Object.keys(record)) {
+      if (!key.startsWith(prefix)) continue;
+      const size = Number(key.slice(prefix.length));
+      if (Number.isFinite(size) && size > sizeBytes) larger.push({ size, driveId: record[key] });
+    }
+    larger.sort((a, b) => b.size - a.size).forEach((entry) => add(entry.driveId));
+  }
+  return out;
+}

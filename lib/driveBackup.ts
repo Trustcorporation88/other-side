@@ -28,6 +28,7 @@ import { dateFromName, monthKeyLocal, monthKeyOf } from './mediaDate';
 import {
   childCounts,
   chooseFullestFolder,
+  driveIdCandidates,
   duplicateMonthFolderLosers,
   findExistingUpload,
   findMessagesFile,
@@ -757,10 +758,11 @@ const KEEP_RECENT_LOCAL_IMAGES = 300;
 
 /** Id do arquivo no Drive para um item preservado, ou null se ainda não subiu. */
 export function driveFileIdFor(id: string, fileName?: string, sizeBytes?: number): string | null {
-  const record = readRecord();
-  if (record[id]) return record[id];
-  if (fileName && sizeBytes && sizeBytes > 0) return record[ledgerKey(fileName, sizeBytes)] ?? null;
-  return null;
+  return driveIdCandidatesFor(id, fileName, sizeBytes)[0] ?? null;
+}
+
+export function driveIdCandidatesFor(id: string, fileName?: string, sizeBytes?: number): string[] {
+  return driveIdCandidates(readRecord(), id, fileName ?? '', sizeBytes ?? 0);
 }
 
 /**

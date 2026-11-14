@@ -314,9 +314,20 @@ export function mergeLinks(
   stored: StoredLinks,
 ): MergedLinks {
   const mediaById = new Map<string, LinkMedia>();
-  for (const item of currentMedia) mediaById.set(item.id, item);
+  const currentBySource = new Map<string, string>();
+  for (const item of currentMedia) {
+    mediaById.set(item.id, item);
+    currentBySource.set(sourceIdentity(item), item.id);
+  }
+  // Uma cópia cortada trocada pela inteira some do índice; a ligação passa para a inteira.
+  const replacedBy = new Map<string, string>();
   for (const [id, item] of Object.entries(stored.media)) {
     if (mediaById.has(id)) continue;
+    const replacement = currentBySource.get(sourceIdentity(item));
+    if (replacement) {
+      replacedBy.set(id, replacement);
+      continue;
+    }
     const { sender: _sender, ...media } = item;
     mediaById.set(id, media);
   }
@@ -326,12 +337,14 @@ export function mergeLinks(
   const senderByMedia = new Map(computed.senderByMedia);
 
   const usedMedia = new Set(mediaByMessage.values());
-  for (const [messageId, mediaId] of Object.entries(stored.mediaByMessage)) {
+  for (const [messageId, storedId] of Object.entries(stored.mediaByMessage)) {
+    const mediaId = replacedBy.get(storedId) ?? storedId;
     if (mediaByMessage.has(messageId) || usedMedia.has(mediaId) || !mediaById.has(mediaId)) continue;
     mediaByMessage.set(messageId, mediaId);
     usedMedia.add(mediaId);
   }
-  for (const [id, item] of Object.entries(stored.media)) {
+  for (const [storedId, item] of Object.entries(stored.media)) {
+    const id = replacedBy.get(storedId) ?? storedId;
     if (!senderByMedia.has(id) && item.sender) senderByMedia.set(id, item.sender);
   }
 
@@ -360,6 +373,10 @@ export function mergeLinks(
   }
 
   return { mediaByMessage, senderByMedia, mediaById, stored: next };
+}
+
+function sourceIdentity(item: Pick<LinkMedia, 'kind' | 'fileName' | 'sourcePackage'>): string {
+  return `${item.kind}|${accountOf(item.sourcePackage)}|${item.fileName}`;
 }
 
 /** "Ana" ou "Ana · Família" quando a mensagem veio de um grupo. */
