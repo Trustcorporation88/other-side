@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +10,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { type PreservedAudio } from '@otherside/notification-capture';
 import { useMessageMedia } from '@/hooks/useMessageMedia';
 import { usePreservedMedia } from '@/hooks/usePreservedMedia';
-import { senderLabel } from '@/lib/messageMedia';
-import { resolveMediaUri } from '@/lib/mediaResolver';
 
 const colors = {
   navy: '#071527',
@@ -31,38 +28,20 @@ const colors = {
   amber: '#F1B65B',
 };
 
-function formatMoment(timestamp: number): string {
-  if (!timestamp) return '';
-  return new Date(timestamp).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export default function FotosScreen() {
-  const { items, supported, hasAccess, nativeAvailable, requestAccess, remove, clearAll } =
+  const router = useRouter();
+  const { items, supported, hasAccess, nativeAvailable, requestAccess, refresh, clearAll } =
     usePreservedMedia('image');
   const { senderByMedia } = useMessageMedia();
-  const [selected, setSelected] = useState<PreservedAudio | null>(null);
-  const [viewerUri, setViewerUri] = useState<string | null>(null);
-  const [viewerLoading, setViewerLoading] = useState(false);
-  const selectedSender = selected ? senderByMedia.get(selected.id) : undefined;
 
-  async function openPhoto(photo: PreservedAudio) {
-    setSelected(photo);
-    setViewerUri(null);
-    setViewerLoading(true);
-    const uri = await resolveMediaUri(photo);
-    setViewerLoading(false);
-    setViewerUri(uri);
-  }
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
-  function closeViewer() {
-    setSelected(null);
-    setViewerUri(null);
-    setViewerLoading(false);
+  function openPhoto(photo: PreservedAudio) {
+    router.push({ pathname: '/media/[id]', params: { id: photo.id } });
   }
 
   const groups = useMemo(() => {
@@ -101,20 +80,6 @@ export default function FotosScreen() {
         items: dayItems.sort((a, b) => momentOf(b) - momentOf(a)),
       }));
   }, [items]);
-
-  function confirmDelete(photo: PreservedAudio) {
-    Alert.alert('Apagar foto', 'A cópia local será removida deste aparelho.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Apagar',
-        style: 'destructive',
-        onPress: () => {
-          closeViewer();
-          remove(photo.id);
-        },
-      },
-    ]);
-  }
 
   function confirmClear() {
     Alert.alert('Apagar todas as fotos', 'Todas as cópias locais de fotos serão removidas.', [
@@ -194,7 +159,7 @@ export default function FotosScreen() {
                         key={photo.id}
                         accessibilityRole="imagebutton"
                         accessibilityLabel={sender ? `Abrir foto de ${sender.sender}` : 'Abrir foto'}
-                        onPress={() => void openPhoto(photo)}
+                        onPress={() => openPhoto(photo)}
                         style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}>
                         <Image
                           source={{ uri: photo.thumbUri || photo.uri }}
@@ -227,56 +192,6 @@ export default function FotosScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={selected != null} transparent animationType="fade" onRequestClose={closeViewer}>
-        <View style={styles.viewer}>
-          <View style={styles.viewerBar}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Fechar"
-              onPress={closeViewer}
-              style={({ pressed }) => [styles.viewerButton, pressed && styles.pressed]}>
-              <Text style={styles.viewerButtonText}>✕</Text>
-            </Pressable>
-            {selected && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Apagar foto"
-                onPress={() => confirmDelete(selected)}
-                style={({ pressed }) => [styles.viewerButton, pressed && styles.pressed]}>
-                <Text style={styles.viewerButtonText}>🗑</Text>
-              </Pressable>
-            )}
-          </View>
-          <View style={styles.viewerBody}>
-            {viewerLoading ? (
-              <View style={styles.viewerCenter}>
-                <ActivityIndicator color={colors.blueSoft} />
-                <Text style={styles.viewerHint}>Baixando do Drive…</Text>
-              </View>
-            ) : viewerUri ? (
-              <Image source={{ uri: viewerUri }} style={styles.viewerImage} resizeMode="contain" />
-            ) : (
-              <View style={styles.viewerCenter}>
-                <Text style={styles.viewerHint}>
-                  Não foi possível abrir a foto — sem cópia no aparelho nem no Drive, ou sem conexão.
-                </Text>
-              </View>
-            )}
-          </View>
-          {selected && (
-            <View style={styles.viewerFooter}>
-              {selectedSender && (
-                <Text style={styles.viewerSender} numberOfLines={2}>
-                  De {senderLabel(selectedSender)}
-                </Text>
-              )}
-              <Text style={styles.viewerMeta}>
-                {formatMoment(selected.originalModifiedAt || selected.preservedAt)}
-              </Text>
-            </View>
-          )}
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -453,30 +368,4 @@ const styles = StyleSheet.create({
   privacyCopy: { flex: 1 },
   privacyTitle: { color: colors.blueSoft, fontSize: 13, fontWeight: '700', marginBottom: 4 },
   privacyDescription: { color: colors.muted, fontSize: 12, lineHeight: 18 },
-  viewer: { backgroundColor: 'rgba(3, 9, 18, 0.97)', flex: 1 },
-  viewerBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 10,
-    paddingHorizontal: 18,
-    paddingTop: 48,
-  },
-  viewerButton: {
-    alignItems: 'center',
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  viewerButtonText: { color: colors.white, fontSize: 20, fontWeight: '700' },
-  viewerBody: { flex: 1 },
-  viewerCenter: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center', paddingHorizontal: 32 },
-  viewerHint: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  viewerImage: { flex: 1, width: '100%' },
-  viewerFooter: { gap: 4, paddingHorizontal: 24, paddingVertical: 16 },
-  viewerSender: { color: colors.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  viewerMeta: {
-    color: colors.muted,
-    fontSize: 13,
-    textAlign: 'center',
-  },
 });
