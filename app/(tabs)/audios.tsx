@@ -12,7 +12,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import { type PreservedAudio } from '@otherside/notification-capture';
+import { useMessageMedia } from '@/hooks/useMessageMedia';
 import { usePreservedMedia } from '@/hooks/usePreservedMedia';
+import { senderLabel } from '@/lib/messageMedia';
 import { resolveMediaUri } from '@/lib/mediaResolver';
 
 const colors = {
@@ -70,6 +72,7 @@ export default function AudiosScreen() {
     remove: removeAudio,
     clearAll,
   } = usePreservedMedia('audio');
+  const { senderByMedia } = useMessageMedia();
 
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
@@ -255,6 +258,9 @@ export default function AudiosScreen() {
                   const isActive = activeId === audio.id;
                   const isPlaying = isActive && status.playing;
                   const isLoading = loadingId === audio.id;
+                  const sender = audio.origin === 'sent' ? undefined : senderByMedia.get(audio.id);
+                  const chatLine =
+                    sender && senderLabel(sender) !== sender.sender ? `Conversa: ${sender.conversation}` : null;
                   return (
                     <View key={audio.id} style={[styles.card, isActive && styles.cardActive]}>
                       <View style={styles.cardRow}>
@@ -268,7 +274,14 @@ export default function AudiosScreen() {
                           </Text>
                         </Pressable>
                         <View style={styles.cardCopy}>
-                          <Text style={styles.cardTitle}>{originLabel(audio.origin)}</Text>
+                          <Text style={styles.cardTitle} numberOfLines={1}>
+                            {sender ? `Áudio de ${sender.sender || sender.conversation}` : originLabel(audio.origin)}
+                          </Text>
+                          {chatLine && (
+                            <Text style={styles.cardChat} numberOfLines={1}>
+                              {chatLine}
+                            </Text>
+                          )}
                           <Text style={styles.cardMeta}>
                             {formatMoment(audio.originalModifiedAt || audio.preservedAt)} ·{' '}
                             {formatSize(audio.sizeBytes)}
@@ -562,6 +575,11 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+  cardChat: {
+    color: colors.blueSoft,
+    fontSize: 12,
+    marginTop: 3,
   },
   cardMeta: {
     color: colors.muted,

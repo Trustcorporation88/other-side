@@ -76,7 +76,7 @@ function storedName(fileName: string, sizeBytes: number): string {
   return `${sizeBytes}-${cleaned || 'documento'}`;
 }
 
-function mimeFor(fileName: string): string {
+export function documentMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
   return MIME_BY_EXTENSION[ext] ?? 'application/octet-stream';
 }
@@ -266,7 +266,7 @@ export async function openRecentDocument(document: RecentDocument): Promise<'ope
   const file = new File(dir, document.storedName);
   if (!file.exists) return 'missing';
   try {
-    const opened = openContentUri(file.contentUri, mimeFor(document.fileName));
+    const opened = openContentUri(file.contentUri, documentMimeType(document.fileName));
     return opened ? 'opened' : 'unavailable';
   } catch (_error) {
     return 'unavailable';

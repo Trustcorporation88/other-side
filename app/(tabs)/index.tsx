@@ -9,10 +9,13 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { openNotificationSettings } from '@otherside/notification-capture';
+import { useMessageMedia } from '@/hooks/useMessageMedia';
 import { useNotificationCapture } from '@/hooks/useNotificationCapture';
+import { mediaKindOfMessage, type LinkableKind } from '@/lib/messageMedia';
 import {
   normalizeWhatsAppPackage,
   presentWhatsAppAccounts,
@@ -46,7 +49,15 @@ function getAudioStatusLabel(status: string) {
   return null;
 }
 
+const MEDIA_ACTIONS: Record<LinkableKind, { glyph: string; label: string }> = {
+  image: { glyph: '▢', label: 'Ver foto' },
+  audio: { glyph: '▶', label: 'Ouvir áudio' },
+  document: { glyph: '▣', label: 'Abrir documento' },
+};
+
 export default function MessagesScreen() {
+  const router = useRouter();
+  const { mediaByMessage } = useMessageMedia();
   const [query, setQuery] = useState('');
   const [accountFilter, setAccountFilter] = useState<'all' | WhatsAppAccountId>('all');
   const { notifications, listenerEnabled, nativeAvailable, refresh } = useNotificationCapture();
@@ -187,26 +198,50 @@ export default function MessagesScreen() {
           </View>
         ) : (
           <View style={styles.messageList}>
-            {filteredNotifications.map((notification) => (
-              <View key={notification.id} style={styles.messageCard}>
-                <View style={styles.messageHeader}>
-                  <View style={styles.messageCopy}>
-                    <Text style={styles.messageConversation}>{notification.conversation}</Text>
-                    <Text style={styles.messageSender}>{notification.sender}</Text>
+            {filteredNotifications.map((notification) => {
+              const mediaKind = mediaKindOfMessage(notification.message);
+              const mediaId = mediaKind ? mediaByMessage.get(notification.id) : undefined;
+              return (
+                <Pressable
+                  key={notification.id}
+                  accessibilityRole={mediaId ? 'button' : undefined}
+                  accessibilityLabel={mediaId && mediaKind ? MEDIA_ACTIONS[mediaKind].label : undefined}
+                  disabled={!mediaId}
+                  onPress={() => {
+                    if (mediaId) router.push({ pathname: '/media/[id]', params: { id: mediaId } });
+                  }}
+                  style={({ pressed }) => [styles.messageCard, pressed && styles.pressed]}>
+                  <View style={styles.messageHeader}>
+                    <View style={styles.messageCopy}>
+                      <Text style={styles.messageConversation}>{notification.conversation}</Text>
+                      <Text style={styles.messageSender}>{notification.sender}</Text>
+                    </View>
+                    <Text style={styles.messageTime}>{formatNotificationTime(notification.receivedAt)}</Text>
                   </View>
-                  <Text style={styles.messageTime}>{formatNotificationTime(notification.receivedAt)}</Text>
-                </View>
-                <Text style={styles.messageBody}>{notification.message}</Text>
-                {getAudioStatusLabel(notification.audioStatus) && (
-                  <Text style={styles.audioDiagnostic}>
-                    {getAudioStatusLabel(notification.audioStatus)}
+                  <Text style={styles.messageBody}>{notification.message}</Text>
+                  {getAudioStatusLabel(notification.audioStatus) && (
+                    <Text style={styles.audioDiagnostic}>
+                      {getAudioStatusLabel(notification.audioStatus)}
+                    </Text>
+                  )}
+                  {mediaKind && mediaId ? (
+                    <View style={styles.mediaAction}>
+                      <Text style={styles.mediaActionText}>
+                        {MEDIA_ACTIONS[mediaKind].glyph}  {MEDIA_ACTIONS[mediaKind].label}
+                      </Text>
+                      <Text style={styles.mediaActionArrow}>›</Text>
+                    </View>
+                  ) : mediaKind ? (
+                    <Text style={styles.mediaMissing}>
+                      Arquivo ainda não encontrado no aparelho (o WhatsApp pode não ter baixado).
+                    </Text>
+                  ) : null}
+                  <Text style={styles.messageMeta}>
+                    {whatsappAccountLabel(notification.packageName).toUpperCase()} · PRESERVADA NO APARELHO
                   </Text>
-                )}
-                <Text style={styles.messageMeta}>
-                  {whatsappAccountLabel(notification.packageName).toUpperCase()} · PRESERVADA NO APARELHO
-                </Text>
-              </View>
-            ))}
+                </Pressable>
+              );
+            })}
           </View>
         )}
 
@@ -513,6 +548,34 @@ const styles = StyleSheet.create({
     color: colors.amber,
     fontSize: 12,
     fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 10,
+  },
+  mediaAction: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceRaised,
+    borderColor: '#2A5078',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    minHeight: 44,
+    paddingHorizontal: 14,
+  },
+  mediaActionText: {
+    color: colors.blueSoft,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  mediaActionArrow: {
+    color: colors.blueSoft,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  mediaMissing: {
+    color: colors.muted,
+    fontSize: 12,
     lineHeight: 18,
     marginTop: 10,
   },
