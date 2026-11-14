@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { openNotificationSettings } from '@otherside/notification-capture';
 import { useNotificationCapture } from '@/hooks/useNotificationCapture';
 import { useDriveBackup } from '@/hooks/useDriveBackup';
+import { AUDIT_LABEL, percentOnDrive } from '@/lib/backupAudit';
 
 const colors = {
   navy: '#071527',
@@ -79,6 +80,7 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>BACKUP</Text>
         <DriveBackupCard drive={drive} />
+        <BackupAuditCard drive={drive} />
         <GalleryBackupCard drive={drive} />
 
         <Text style={styles.sectionLabel}>PRIVACIDADE</Text>
@@ -207,6 +209,133 @@ function DriveBackupCard({ drive }: { drive: ReturnType<typeof useDriveBackup> }
             {busy ? 'Conectando…' : available ? 'Conectar Google Drive' : 'Como instalar o APK'}
           </Text>
           <Text style={styles.secondaryButtonArrow}>↗</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+function monthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split('-');
+  const name = MONTHS[Number(month) - 1];
+  return name ? `${name}/${year}` : monthKey;
+}
+
+function BackupAuditCard({ drive }: { drive: ReturnType<typeof useDriveBackup> }) {
+  const { available, connected, audit, auditing, runAudit, sendMissing, syncing, progress } = drive;
+  if (!available || !connected) return null;
+
+  const missing = audit?.categories.reduce((sum, category) => sum + category.missing, 0) ?? 0;
+  const messagesOk = !audit || audit.messages.local === 0 || audit.messages.upToDate;
+  const allDone = Boolean(audit) && missing === 0 && messagesOk;
+
+  async function handleAudit() {
+    const result = await runAudit();
+    if (!result) {
+      Alert.alert('Não deu para verificar', 'Confira a internet e se o Google Drive continua conectado.');
+    }
+  }
+
+  return (
+    <View style={[styles.card, styles.galleryCard]}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardIcon}>
+          <View style={styles.cardIconDot} />
+        </View>
+        <View style={styles.cardHeaderCopy}>
+          <Text style={styles.cardTitle}>Verificar backup</Text>
+          <Text style={[styles.cardSubtitle, allDone && styles.cardSubtitleActive]}>
+            {!audit
+              ? 'Ainda não verificado'
+              : allDone
+                ? '100% no Drive'
+                : `${missing} arquivo${missing === 1 ? '' : 's'} faltando`}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.cardDescription}>
+        Confere arquivo por arquivo o que está no celular contra o que já está no seu Drive. Só dá para conferir o que ainda existe no aparelho: o que o WhatsApp ou o celular apagou antes do OtherSide copiar não volta.
+      </Text>
+
+      {audit && (
+        <View style={styles.auditList}>
+          {audit.categories.map((category) => {
+            const percent = percentOnDrive(category.onDrive, category.total);
+            return (
+              <View key={category.category} style={styles.auditItem}>
+                <View style={styles.auditRow}>
+                  <Text style={styles.auditLabel}>{AUDIT_LABEL[category.category]}</Text>
+                  <Text style={[styles.auditValue, category.missing === 0 && styles.auditValueOk]}>
+                    {percent}%
+                  </Text>
+                </View>
+                <Text style={styles.auditDetail}>
+                  {category.onDrive} de {category.total} no Drive
+                  {category.missing > 0 ? ` · faltam ${category.missing}` : ''}
+                </Text>
+                {category.gaps.length > 0 && (
+                  <Text style={styles.auditGaps}>
+                    {category.gaps
+                      .slice(0, 6)
+                      .map((gap) => `${monthLabel(gap.monthKey)}: ${gap.missing}`)
+                      .join(' · ')}
+                    {category.gaps.length > 6 ? ` · +${category.gaps.length - 6} meses` : ''}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+          <View style={styles.auditItem}>
+            <View style={styles.auditRow}>
+              <Text style={styles.auditLabel}>Mensagens (texto)</Text>
+              <Text style={[styles.auditValue, messagesOk && styles.auditValueOk]}>
+                {messagesOk ? '100%' : 'pendente'}
+              </Text>
+            </View>
+            <Text style={styles.auditDetail}>
+              {audit.messages.local} guardada{audit.messages.local === 1 ? '' : 's'} no aparelho
+              {audit.messages.local > 0 ? (audit.messages.upToDate ? ' · cópia em dia no Drive' : ' · cópia no Drive desatualizada') : ''}
+              . Só entram as que chegaram como notificação, até 200 por conta.
+            </Text>
+          </View>
+          {audit.gallery !== 'ok' && (
+            <Text style={styles.toggleHint}>
+              {audit.gallery === 'disabled'
+                ? 'Galeria da câmera não conferida: o backup da galeria está desligado.'
+                : 'Galeria da câmera não conferida: falta a permissão de fotos e vídeos.'}
+            </Text>
+          )}
+          {audit.waitingWifi && (
+            <Text style={styles.toggleHint}>Sem Wi-Fi agora: vídeos e galeria só sobem no Wi-Fi.</Text>
+          )}
+          {!audit.driveListComplete && (
+            <Text style={styles.toggleHint}>
+              O Drive não respondeu a lista inteira. Parte do “no Drive” veio do registro do app; verifique de novo depois.
+            </Text>
+          )}
+        </View>
+      )}
+
+      <Pressable
+        accessibilityRole="button"
+        disabled={auditing || syncing}
+        onPress={() => void handleAudit()}
+        style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+        <Text style={styles.secondaryButtonText}>{auditing ? 'Verificando…' : 'Verificar agora'}</Text>
+        <Text style={styles.secondaryButtonArrow}>✓</Text>
+      </Pressable>
+      {audit && !allDone && (
+        <Pressable
+          accessibilityRole="button"
+          disabled={auditing || syncing}
+          onPress={() => void sendMissing()}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+          <Text style={styles.secondaryButtonText}>
+            {syncing ? (progress ? `Enviando ${progress.done}/${progress.total}…` : 'Enviando…') : 'Enviar o que falta'}
+          </Text>
+          <Text style={styles.secondaryButtonArrow}>↑</Text>
         </Pressable>
       )}
     </View>
@@ -557,6 +686,49 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  auditList: {
+    marginTop: 14,
+  },
+  auditItem: {
+    borderTopColor: '#1C3E63',
+    borderTopWidth: 1,
+    paddingVertical: 10,
+  },
+  auditRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  auditLabel: {
+    color: colors.white,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  auditValue: {
+    color: colors.amber,
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: '800',
+    minWidth: 44,
+    textAlign: 'right',
+  },
+  auditValueOk: {
+    color: '#67E3A3',
+  },
+  auditDetail: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  auditGaps: {
+    color: colors.amber,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
   },
   privacyCard: {
     backgroundColor: colors.navySoft,

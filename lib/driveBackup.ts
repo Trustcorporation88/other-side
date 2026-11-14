@@ -11,6 +11,7 @@ import {
   isOnWifi,
 } from '@otherside/notification-capture';
 
+import { categoryOfKind, summarizeAudit, type AuditCategory, type CategoryAudit } from './backupAudit';
 import { readBackupSettings } from './backupSettings';
 import { materializeRecentDocuments } from './recentDocuments';
 import {
@@ -181,6 +182,7 @@ type UploadItem = {
   photos: boolean;
   /** Vídeo do WhatsApp: sobe direto, sem cópia no app. Espera Wi-Fi se a trava da galeria estiver ligada. */
   video: boolean;
+  category: AuditCategory;
 };
 
 let syncing = false;
@@ -580,6 +582,7 @@ async function collectMediaItems(): Promise<UploadItem[]> {
       monthKey: monthKeyOf(date),
       photos: false,
       video: item.kind === 'video',
+      category: categoryOfKind(item.kind),
     });
   };
   for (const media of await getAllWhatsAppMedia()) add(media);
@@ -623,6 +626,7 @@ async function collectGalleryItems(): Promise<{ items: UploadItem[]; skipped: Ga
       monthKey: monthKeyLocal(takenAt),
       photos: true,
       video: false,
+      category: 'gallery',
     });
   }
   return { items, skipped };
@@ -635,6 +639,79 @@ export async function backfillGallery(
   return syncNow(onProgress, undefined, { galleryLimit: Number.MAX_SAFE_INTEGER, focus: 'gallery' });
 }
 
+/** Tudo o que falta, sem o teto da galeria do sync automático. WhatsApp vai na frente. */
+export async function syncEverything(
+  onProgress?: (done: number, total: number) => void,
+): Promise<SyncResult> {
+  return syncNow(onProgress, undefined, { galleryLimit: Number.MAX_SAFE_INTEGER });
+}
+
+export type BackupAudit = {
+  checkedAt: number;
+  /** Falso quando a listagem do Drive veio incompleta: "no Drive" confia no registro local. */
+  driveListComplete: boolean;
+  categories: CategoryAudit[];
+  gallery: 'ok' | 'disabled' | 'permission';
+  messages: { local: number; onDrive: boolean; upToDate: boolean };
+  /** Vídeos do WhatsApp que esperam Wi-Fi para subir. */
+  waitingWifi: boolean;
+};
+
+/**
+ * Confere, arquivo por arquivo, o que existe no aparelho contra o que já está no Drive
+ * (mesmo nome e tamanho). Só lê: não envia nem apaga nada.
+ */
+export async function auditBackup(): Promise<BackupAudit | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  const listed = await listAppFiles(token);
+  const driveFiles = listed.files.map(toRemote);
+  const record = readRecord();
+  const byNameSize = indexByNameAndSize(driveFiles);
+  const byId = new Set(driveFiles.map((file) => file.id));
+
+  const mediaItems = await collectMediaItems();
+  const gallery = await collectGalleryItems();
+  const entries = [...mediaItems, ...gallery.items].map((item) => ({
+    category: item.category,
+    monthKey: item.monthKey,
+    onDrive: isAlreadyUploaded(record, byNameSize, byId, item, listed.complete),
+  }));
+
+  const roots = driveFiles.filter((file) => file.isFolder && file.name === 'OtherSide');
+  const rootId = chooseFullestFolder(roots, childCounts(driveFiles))?.id ?? '';
+  const remoteMessages = findMessagesFile(driveFiles, rootId, record[MESSAGES_KEY]);
+  const snapshot = writeMessagesSnapshot();
+  const settings = readBackupSettings();
+
+  return {
+    checkedAt: Date.now(),
+    driveListComplete: listed.complete,
+    categories: summarizeAudit(entries),
+    gallery:
+      gallery.skipped === 'disabled' ? 'disabled' : gallery.skipped === 'permission' ? 'permission' : 'ok',
+    messages: {
+      local: getCapturedNotifications().length,
+      onDrive: Boolean(remoteMessages),
+      upToDate: Boolean(
+        remoteMessages && snapshot && !messagesNeedUpdate({ size: snapshot.size, md5: snapshot.md5 }, remoteMessages),
+      ),
+    },
+    waitingWifi: settings.wifiOnly && !isOnWifi(),
+  };
+}
+
+function writeMessagesSnapshot(): File | null {
+  const notifications = getCapturedNotifications();
+  if (notifications.length === 0) return null;
+  const tmp = new File(Paths.cache, 'otherside-mensagens.json');
+  if (tmp.exists) tmp.delete();
+  tmp.create();
+  tmp.write(JSON.stringify(notifications, null, 2));
+  return tmp;
+}
+
 /** Sobe (ou atualiza) um único JSON com o texto das mensagens preservadas. */
 async function syncMessages(
   token: string,
@@ -643,13 +720,8 @@ async function syncMessages(
   driveFiles: RemoteFile[],
 ): Promise<boolean> {
   try {
-    const notifications = getCapturedNotifications();
-    if (notifications.length === 0) return false;
-
-    const tmp = new File(Paths.cache, 'otherside-mensagens.json');
-    if (tmp.exists) tmp.delete();
-    tmp.create();
-    tmp.write(JSON.stringify(notifications, null, 2));
+    const tmp = writeMessagesSnapshot();
+    if (!tmp) return false;
     const local = { size: tmp.size, md5: tmp.md5 };
     const remote = findMessagesFile(driveFiles, folderId, record[MESSAGES_KEY]);
 
