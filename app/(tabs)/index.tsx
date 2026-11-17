@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { openNotificationSettings } from '@otherside/notification-capture';
+import { LinkifiedText } from '@/components/LinkifiedText';
 import { useMessageMedia } from '@/hooks/useMessageMedia';
 import { useNotificationCapture } from '@/hooks/useNotificationCapture';
 import { mediaKindOfMessage, type LinkableKind } from '@/lib/messageMedia';
@@ -218,7 +219,7 @@ export default function MessagesScreen() {
                     </View>
                     <Text style={styles.messageTime}>{formatNotificationTime(notification.receivedAt)}</Text>
                   </View>
-                  <Text style={styles.messageBody}>{notification.message}</Text>
+                  <LinkifiedText text={notification.message} style={styles.messageBody} />
                   {getAudioStatusLabel(notification.audioStatus) && (
                     <Text style={styles.audioDiagnostic}>
                       {getAudioStatusLabel(notification.audioStatus)}
