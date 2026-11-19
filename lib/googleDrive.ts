@@ -329,6 +329,23 @@ export async function uploadLocalFile(
   }
 }
 
+/** Baixa o texto de um arquivo criado pelo app. Null se a rede ou o Drive falhar. */
+export async function downloadDriveText(
+  token: string,
+  fileId: string,
+): Promise<{ text: string; byteLength: number } | null> {
+  try {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return { text: new TextDecoder().decode(bytes), byteLength: bytes.byteLength };
+  } catch (_error) {
+    return null;
+  }
+}
+
 /** Substitui o conteúdo de um arquivo já existente no Drive. */
 export async function uploadMedia(
   token: string,

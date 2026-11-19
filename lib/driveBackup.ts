@@ -9,12 +9,14 @@ import {
   hasGalleryAccess,
   isCharging,
   isOnWifi,
+  restoreCapturedNotifications,
 } from '@otherside/notification-capture';
 
 import { categoryOfKind, summarizeAudit, type AuditCategory, type CategoryAudit } from './backupAudit';
 import { readBackupSettings } from './backupSettings';
 import { materializeRecentDocuments } from './recentDocuments';
 import {
+  downloadDriveText,
   ensureFolder,
   ensureSubFolder,
   getAccessToken,
@@ -33,9 +35,12 @@ import {
   findExistingUpload,
   findMessagesFile,
   indexByNameAndSize,
+  isCompleteDownload,
   isMonthFolderName,
   ledgerKey,
+  messageRestoreAction,
   messagesNeedUpdate,
+  remoteHistoryIncorporated,
   shouldMoveIntoMonthFolder,
   type RemoteFile,
 } from './uploadIdentity';
@@ -522,7 +527,8 @@ export async function syncNow(
       }
     }
 
-    const messagesSynced = await syncMessages(token, folderId, record, driveFiles);
+    const remoteIncorporated = await incorporateRemoteMessages(token, folderId, record, driveFiles);
+    const messagesSynced = await syncMessages(token, folderId, record, driveFiles, remoteIncorporated);
     writeRecord(record);
     evictOldLocalFiles(record);
     await offloadCameraPhotos(byNameSize, galleryFolderIds, listed.complete);
@@ -713,12 +719,44 @@ function writeMessagesSnapshot(): File | null {
   return tmp;
 }
 
+/**
+ * Baixa o mensagens.json e junta com o histórico local.
+ * Sem arquivo, ou se ele já é igual ao aparelho, não baixa.
+ * Falha de rede não mexe no histórico e impede regravar o Drive nesta tentativa.
+ */
+async function incorporateRemoteMessages(
+  token: string,
+  folderId: string,
+  record: Record<string, string>,
+  driveFiles: RemoteFile[],
+): Promise<boolean> {
+  try {
+    const remote = findMessagesFile(driveFiles, folderId, record[MESSAGES_KEY]);
+    if (remote) record[MESSAGES_KEY] = remote.id;
+    const localFile = writeMessagesSnapshot();
+    const action = messageRestoreAction(
+      remote,
+      localFile ? { size: localFile.size, md5: localFile.md5 } : null,
+    );
+    if (action !== 'download' || !remote) return remoteHistoryIncorporated(action, 'unchanged');
+
+    const downloaded = await downloadDriveText(token, remote.id);
+    if (!downloaded || !isCompleteDownload(downloaded.byteLength, remote.size)) {
+      return remoteHistoryIncorporated('download', 'failed');
+    }
+    return remoteHistoryIncorporated('download', restoreCapturedNotifications(downloaded.text));
+  } catch (_error) {
+    return false;
+  }
+}
+
 /** Sobe (ou atualiza) um único JSON com o texto das mensagens preservadas. */
 async function syncMessages(
   token: string,
   folderId: string,
   record: Record<string, string>,
   driveFiles: RemoteFile[],
+  remoteIncorporated: boolean,
 ): Promise<boolean> {
   try {
     const tmp = writeMessagesSnapshot();
@@ -729,10 +767,13 @@ async function syncMessages(
     if (remote) {
       record[MESSAGES_KEY] = remote.id;
       if (!messagesNeedUpdate(local, remote)) return true;
+      // Sem incorporar o arquivo remoto, não substitui o backup por um histórico mais curto.
+      if (!remoteIncorporated) return false;
       const ok = await uploadMedia(token, remote.id, tmp.uri, 'application/json');
       // Falha transitória não cria outro mensagens.json.
       return ok;
     }
+    if (!remoteIncorporated) return false;
 
     const driveId = await uploadLocalFile(token, {
       fileUri: tmp.uri,

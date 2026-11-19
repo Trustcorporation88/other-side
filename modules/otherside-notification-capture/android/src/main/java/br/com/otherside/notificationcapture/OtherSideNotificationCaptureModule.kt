@@ -20,7 +20,13 @@ class OtherSideNotificationCaptureModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("OtherSideNotificationCapture")
 
-    Events("onNotificationCaptured", "onAudioPreserved", "onGalleryChanged", "onWhatsAppVideoReady")
+    Events(
+      "onNotificationCaptured",
+      "onAudioPreserved",
+      "onGalleryChanged",
+      "onWhatsAppVideoReady",
+      "onNotificationsRestored",
+    )
 
     OnCreate {
       instance = this@OtherSideNotificationCaptureModule
@@ -59,6 +65,15 @@ class OtherSideNotificationCaptureModule : Module() {
     Function("clearCapturedNotifications") {
       appContext.reactContext?.let(OtherSideNotificationStore::clear)
       Unit
+    }
+
+    Function("restoreCapturedNotifications") { raw: String ->
+      val context = appContext.reactContext ?: return@Function MessageHistoryMerge.FAILED
+      val outcome = OtherSideNotificationStore.restore(context, raw)
+      if (outcome == MessageHistoryMerge.RESTORED) {
+        runCatching { this@OtherSideNotificationCaptureModule.emitNotificationsRestored() }
+      }
+      outcome
     }
 
     Function("isAudioPreservationSupported") {
@@ -197,6 +212,10 @@ class OtherSideNotificationCaptureModule : Module() {
 
   internal fun emitNotification(notification: CapturedNotification) {
     sendEvent("onNotificationCaptured", notification.toMap())
+  }
+
+  internal fun emitNotificationsRestored() {
+    sendEvent("onNotificationsRestored", mapOf("at" to System.currentTimeMillis()))
   }
 
   internal fun emitAudioPreserved(audio: PreservedAudio) {

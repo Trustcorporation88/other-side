@@ -50,6 +50,7 @@ type NativeEvents = {
   onAudioPreserved: (event: PreservedAudio) => void;
   onGalleryChanged: (event: { at: number }) => void;
   onWhatsAppVideoReady: (event: { at: number }) => void;
+  onNotificationsRestored: (event: { at: number }) => void;
 };
 
 type NativeModule = {
@@ -62,6 +63,7 @@ type NativeModule = {
   getCapturedNotifications: () => CapturedNotification[];
   deleteCapturedNotification: (id: string) => void;
   clearCapturedNotifications: () => void;
+  restoreCapturedNotifications?: (raw: string) => string;
   isAudioPreservationSupported: () => boolean;
   hasAllFilesAccess: () => boolean;
   requestAllFilesAccess: () => void;
@@ -134,6 +136,31 @@ export function clearCapturedNotifications(): void {
     nativeModule?.clearCapturedNotifications();
   } catch (_error) {
     // Clearing is best effort and never blocks the application shell.
+  }
+}
+
+export type MessageRestoreOutcome = 'restored' | 'unchanged' | 'failed' | 'unsupported';
+
+/** Grava o mensagens.json do Drive no histórico local. Não apaga nada se o texto for inválido. */
+export function restoreCapturedNotifications(raw: string): MessageRestoreOutcome {
+  try {
+    const restore = nativeModule?.restoreCapturedNotifications;
+    if (!restore) return 'unsupported';
+    const outcome = restore(raw);
+    if (outcome === 'restored' || outcome === 'unchanged' || outcome === 'failed') return outcome;
+    return 'failed';
+  } catch (_error) {
+    return 'failed';
+  }
+}
+
+export function addNotificationsRestoredListener(listener: () => void) {
+  try {
+    return (
+      nativeModule?.addListener('onNotificationsRestored', () => listener()) ?? { remove: () => undefined }
+    );
+  } catch (_error) {
+    return { remove: () => undefined };
   }
 }
 

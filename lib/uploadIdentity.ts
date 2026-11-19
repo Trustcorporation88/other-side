@@ -140,6 +140,60 @@ export function messagesNeedUpdate(
   return true;
 }
 
+export type MessageSnapshotMeta = {
+  size: number;
+  md5?: string | null;
+};
+
+export type RemoteMessageMeta = {
+  size: number | null;
+  md5?: string | null;
+};
+
+/** O que fazer com o mensagens.json que já está no Drive. */
+export type MessageRestoreAction = 'absent' | 'current' | 'download';
+
+/** Resultado de gravar o arquivo baixado no histórico local. */
+export type MessageRestoreOutcome = 'restored' | 'unchanged' | 'failed' | 'unsupported';
+
+/**
+ * Sem arquivo no Drive, o aparelho segue podendo enviar o que tem.
+ * Arquivo igual ao snapshot local não precisa ser baixado.
+ * Qualquer diferença (ou histórico local vazio) baixa antes de regravar.
+ */
+export function messageRestoreAction(
+  remote: RemoteMessageMeta | null,
+  local: MessageSnapshotMeta | null,
+): MessageRestoreAction {
+  if (!remote) return 'absent';
+  if (!local) return 'download';
+  const needsUpdate = messagesNeedUpdate(
+    { size: local.size, md5: local.md5 ?? null },
+    { size: remote.size, md5: remote.md5 ?? null },
+  );
+  return needsUpdate ? 'download' : 'current';
+}
+
+/** Download cortado não entra no histórico. Sem tamanho conhecido, o JSON é que decide. */
+export function isCompleteDownload(byteLength: number, remoteSize: number | null): boolean {
+  if (!Number.isFinite(byteLength) || byteLength < 0) return false;
+  if (remoteSize == null) return true;
+  return byteLength === remoteSize;
+}
+
+/**
+ * Só regrava o mensagens.json depois que o arquivo remoto entrou no histórico.
+ * Falha de download deixa o Drive como está e tenta de novo no próximo sync.
+ * APK antigo, sem a função nativa, não trava o envio que já existia.
+ */
+export function remoteHistoryIncorporated(
+  action: MessageRestoreAction,
+  outcome: MessageRestoreOutcome,
+): boolean {
+  if (action !== 'download') return true;
+  return outcome !== 'failed';
+}
+
 /** Fica no arquivo já registrado. Se ele sumiu, usa o mais antigo que ainda existe. */
 export function findMessagesFile(
   files: readonly RemoteFile[],
