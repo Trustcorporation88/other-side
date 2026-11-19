@@ -100,6 +100,17 @@ internal object OtherSideNotificationStore {
     writeJson(context, JSONArray())
   }
 
+  /**
+   * Incorpora o mensagens.json do Drive. JSON inválido não grava nada.
+   * Devolve "restored", "unchanged" ou "failed".
+   */
+  fun restore(context: Context, raw: String): String = synchronized(lock) {
+    val current = readJson(context)
+    val (outcome, next) = MessageHistoryMerge.restoreInto(current, raw)
+    if (outcome == MessageHistoryMerge.RESTORED) writeJson(context, next)
+    outcome
+  }
+
   private fun preferences(context: Context): SharedPreferences = context.getSharedPreferences(
     PREFS_NAME,
     Context.MODE_PRIVATE,

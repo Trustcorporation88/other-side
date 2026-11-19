@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   addNotificationListener,
+  addNotificationsRestoredListener,
   getCapturedNotifications,
   isListenerEnabled,
   isNativeAvailable,
@@ -28,12 +29,14 @@ export function useNotificationCapture() {
   useEffect(() => {
     refresh();
     const eventSubscription = addNotificationListener(refresh);
+    const restoredSubscription = addNotificationsRestoredListener(refresh);
     const appStateSubscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') refresh();
     });
 
     return () => {
       eventSubscription.remove();
+      restoredSubscription.remove();
       appStateSubscription.remove();
     };
   }, [refresh]);

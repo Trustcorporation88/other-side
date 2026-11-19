@@ -98,7 +98,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionLabel}>SOBRE A CAPTURA</Text>
         <View style={styles.limitList}>
           <LimitItem text="Só registra notificações que chegarem depois da autorização." />
-          <LimitItem text="Não recupera mensagens anteriores à instalação." />
+          <LimitItem text="Num celular novo, o texto já enviado ao Drive volta para Mensagens (até 200 por conta)." />
           <LimitItem text="Pode não receber conteúdo com prévia oculta ou conversa silenciada." />
           <LimitItem text="Apagar no WhatsApp não apaga automaticamente a cópia local." />
         </View>

@@ -194,7 +194,7 @@ export default function MessagesScreen() {
             <Text style={styles.emptyDescription}>
               {query.length > 0
                 ? `Nada corresponde a “${query}”.`
-                : 'Quando uma mensagem aparecer em uma notificação autorizada, ela ficará disponível aqui, somente neste aparelho.'}
+                : 'Quando uma notificação autorizada chegar, o texto fica aqui. Com o Drive conectado, o backup de mensagens volta sozinho, até 200 por conta.'}
             </Text>
           </View>
         ) : (
