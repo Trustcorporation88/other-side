@@ -14,6 +14,9 @@ internal data class CapturedNotification(
   val packageName: String,
   val isDemo: Boolean,
   val audioStatus: String = AudioAttachmentDiagnostics.NOT_APPLICABLE,
+  val deleted: Boolean = false,
+  /** Falso quando o único texto que o WhatsApp entregou foi o aviso de mensagem apagada. */
+  val textPreserved: Boolean = true,
 ) {
   fun toMap(): Map<String, Any> = mapOf(
     "id" to id,
@@ -24,6 +27,8 @@ internal data class CapturedNotification(
     "packageName" to packageName,
     "isDemo" to isDemo,
     "audioStatus" to audioStatus,
+    "deleted" to deleted,
+    "textPreserved" to textPreserved,
   )
 
   fun toJson(): JSONObject = JSONObject().apply {
@@ -35,6 +40,8 @@ internal data class CapturedNotification(
     put("packageName", packageName)
     put("isDemo", isDemo)
     put("audioStatus", audioStatus)
+    put("deleted", deleted)
+    put("textPreserved", textPreserved)
   }
 
   companion object {
@@ -47,6 +54,12 @@ internal data class CapturedNotification(
       packageName = json.optString("packageName"),
       isDemo = json.optBoolean("isDemo", false),
       audioStatus = json.optString("audioStatus", AudioAttachmentDiagnostics.NOT_APPLICABLE),
+      deleted = json.optBoolean("deleted", false),
+      textPreserved = if (json.has("textPreserved")) {
+        json.optBoolean("textPreserved", true)
+      } else {
+        !DeletedMessage.isPlaceholder(json.optString("message"))
+      },
     )
   }
 }
@@ -56,23 +69,21 @@ internal object OtherSideNotificationStore {
   private const val RECORDS_KEY = "records"
   private val lock = Any()
 
-  fun save(context: Context, notification: CapturedNotification): Boolean = synchronized(lock) {
-    val original = readJson(context)
-    val records = deduplicate(original)
-    if (records.length() != original.length()) writeJson(context, records)
-    for (index in 0 until records.length()) {
-      val existing = records.optJSONObject(index) ?: continue
-      if (existing.optString("id") == notification.id) return false
-    }
+  fun save(context: Context, notification: CapturedNotification): Boolean =
+    saveIncoming(context, listOf(IncomingCapture(notification, matchDeletionByTime = false))).isNotEmpty()
 
-    val merged = JSONArray().apply {
-      put(notification.toJson())
-      for (index in 0 until records.length()) {
-        records.optJSONObject(index)?.let(::put)
-      }
+  /** Guarda várias mensagens da mesma notificação. Devolve só o que mudou. */
+  fun saveIncoming(context: Context, incoming: List<IncomingCapture>): List<CapturedNotification> = synchronized(lock) {
+    if (incoming.isEmpty()) return emptyList()
+    val original = readJson(context)
+    val incorporated = CapturedMessageLog.incorporate(deduplicate(original), incoming)
+    val next = NotificationAccountCap.cap(deduplicate(incorporated.records))
+    if (next.toString() != original.toString()) writeJson(context, next)
+    val keptIds = HashSet<String>()
+    for (index in 0 until next.length()) {
+      next.optJSONObject(index)?.optString("id")?.takeIf { it.isNotEmpty() }?.let(keptIds::add)
     }
-    writeJson(context, NotificationAccountCap.cap(merged))
-    true
+    incorporated.changed.filter { it.id in keptIds }
   }
 
   fun getAll(context: Context): List<CapturedNotification> = synchronized(lock) {
@@ -136,11 +147,12 @@ internal object OtherSideNotificationStore {
     }
   }
 
-  private fun fingerprint(record: JSONObject): String = NotificationFingerprint.content(
+  private fun fingerprint(record: JSONObject): String = NotificationFingerprint.dedupKey(
     packageName = record.optString("packageName"),
     conversation = record.optString("conversation"),
     sender = record.optString("sender"),
     message = record.optString("message"),
+    receivedAt = record.optLong("receivedAt"),
   )
 
   private fun writeJson(context: Context, records: JSONArray) {

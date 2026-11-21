@@ -62,20 +62,38 @@ internal object MessageHistoryMerge {
         .thenByDescending { if (it.fromLocal) 1 else 0 },
     )
 
-    val seenIds = HashSet<String>()
     val seenContent = HashSet<String>()
     val ordered = JSONArray()
+    val indexById = HashMap<String, Int>()
     for (row in rows) {
       val record = row.record
       val id = record.optString("id")
-      if (!seenIds.add(id)) continue
-      val content = NotificationFingerprint.content(
+      val existingIndex = indexById[id]
+      if (existingIndex != null) {
+        val preferred = CapturedNotification.fromJson(ordered.getJSONObject(existingIndex))
+        val other = CapturedNotification.fromJson(record)
+        val kept = CapturedMessageLog.preserveStoredMessage(preferred, other)
+        ordered.put(existingIndex, kept.toJson())
+        seenContent.add(
+          NotificationFingerprint.dedupKey(
+            packageName = kept.packageName,
+            conversation = kept.conversation,
+            sender = kept.sender,
+            message = kept.message,
+            receivedAt = kept.receivedAt,
+          ),
+        )
+        continue
+      }
+      val content = NotificationFingerprint.dedupKey(
         packageName = record.optString("packageName"),
         conversation = record.optString("conversation"),
         sender = record.optString("sender"),
         message = record.optString("message"),
+        receivedAt = record.optLong("receivedAt"),
       )
       if (!seenContent.add(content)) continue
+      indexById[id] = ordered.length()
       ordered.put(record)
     }
     return NotificationAccountCap.cap(ordered, maxPerAccount)

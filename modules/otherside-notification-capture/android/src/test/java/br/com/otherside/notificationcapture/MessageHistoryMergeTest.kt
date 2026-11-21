@@ -158,6 +158,45 @@ class MessageHistoryMergeTest {
   }
 
   @Test
+  fun `aviso mais novo do mesmo id nao substitui o texto ja guardado`() {
+    val local = JSONArray().apply { put(message("same", 10, text = "texto original")) }
+    val incoming = JSONArray().apply {
+      put(
+        CapturedNotification(
+          id = "same",
+          conversation = "conversa",
+          sender = "pessoa",
+          message = "Mensagem apagada",
+          receivedAt = 20,
+          packageName = "com.whatsapp",
+          isDemo = false,
+          deleted = true,
+          textPreserved = false,
+        ).toJson(),
+      )
+    }
+
+    val merged = MessageHistoryMerge.merge(local, incoming, maxPerAccount = 10)
+
+    assertEquals(1, merged.length())
+    assertEquals("texto original", merged.getJSONObject(0).getString("message"))
+    assertEquals(true, merged.getJSONObject(0).getBoolean("deleted"))
+    assertEquals(true, merged.getJSONObject(0).getBoolean("textPreserved"))
+  }
+
+  @Test
+  fun `dois avisos de apagada no mesmo chat nao se fundem`() {
+    val incoming = JSONArray()
+    incoming.put(message("cedo", 10, text = "Mensagem apagada"))
+    incoming.put(message("tarde", 11, text = "This message was deleted"))
+    incoming.put(message("outro", 12, text = "Mensagem apagada"))
+
+    val merged = MessageHistoryMerge.merge(JSONArray(), incoming, maxPerAccount = 10)
+
+    assertEquals(listOf("outro", "tarde", "cedo"), ids(merged))
+  }
+
+  @Test
   fun `repetir o merge nao muda o resultado`() {
     val local = JSONArray().apply { put(message("local", 80)) }
     val incoming = JSONArray()

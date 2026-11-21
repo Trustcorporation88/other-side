@@ -100,7 +100,8 @@ export default function SettingsScreen() {
           <LimitItem text="Só registra notificações que chegarem depois da autorização." />
           <LimitItem text="Num celular novo, o texto já enviado ao Drive volta para Mensagens (até 200 por conta)." />
           <LimitItem text="Pode não receber conteúdo com prévia oculta ou conversa silenciada." />
-          <LimitItem text="Apagar no WhatsApp não apaga automaticamente a cópia local." />
+          <LimitItem text="Apagar no WhatsApp não apaga o texto que já foi guardado. A mensagem fica marcada como apagada." />
+          <LimitItem text="Se a conversa estava aberta na tela, o WhatsApp não envia o texto e não há como recuperar." />
         </View>
 
         <Text style={styles.version}>
