@@ -220,6 +220,13 @@ export default function MessagesScreen() {
                     <Text style={styles.messageTime}>{formatNotificationTime(notification.receivedAt)}</Text>
                   </View>
                   <LinkifiedText text={notification.message} style={styles.messageBody} />
+                  {notification.deleted ? (
+                    <Text style={styles.deletedLabel}>
+                      {notification.textPreserved === false
+                        ? 'O WhatsApp só avisou que foi apagada. O texto original não veio na notificação.'
+                        : 'Apagada no WhatsApp. O texto guardado continua aqui.'}
+                    </Text>
+                  ) : null}
                   {getAudioStatusLabel(notification.audioStatus) && (
                     <Text style={styles.audioDiagnostic}>
                       {getAudioStatusLabel(notification.audioStatus)}
@@ -544,6 +551,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     marginTop: 15,
+  },
+  deletedLabel: {
+    color: colors.amber,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 10,
   },
   audioDiagnostic: {
     color: colors.amber,

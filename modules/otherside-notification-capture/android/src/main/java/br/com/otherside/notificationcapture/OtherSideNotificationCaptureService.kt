@@ -23,58 +23,13 @@ class OtherSideNotificationCaptureService : NotificationListenerService() {
   }
 
   override fun onNotificationPosted(sbn: StatusBarNotification) {
-    if (sbn.packageName !in ALLOWED_PACKAGES) return
-
-    try {
-      val extras = sbn.notification?.extras ?: return
-      val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-      val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim().orEmpty()
-      val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim().orEmpty()
-      val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
-        ?.map { it.toString().trim() }
-        ?.filter { it.isNotEmpty() }
-        .orEmpty()
-      val message = bigText.ifBlank {
-        text.ifBlank { lines.joinToString("\n") }
-      }
-
-      if (title.isBlank() || message.isBlank() || isSummary(title, message)) return
-
-      val conversationTitle = extras
-        .getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)
-        ?.toString()
-        ?.trim()
-        .orEmpty()
-      val conversation = conversationTitle.ifBlank { title }
-      val id = NotificationFingerprint.create(
-        packageName = sbn.packageName,
-        notificationKey = sbn.key,
-        conversation = conversation,
-        sender = title,
-        message = message,
-      )
-
-      val captured = CapturedNotification(
-        id = id,
-        conversation = conversation,
-        sender = title,
-        message = message,
-        receivedAt = sbn.postTime,
-        packageName = sbn.packageName,
-        isDemo = false,
-        audioStatus = AudioAttachmentDiagnostics.inspect(this, extras, message),
-      )
-
-      if (OtherSideNotificationStore.save(applicationContext, captured)) {
-        OtherSideNotificationCaptureModule.getInstance()?.emitNotification(captured)
-      }
-    } catch (error: Exception) {
-      Log.e(TAG, "Não foi possível processar a notificação", error)
-    }
+    capture(sbn)
   }
 
   override fun onNotificationRemoved(sbn: StatusBarNotification) {
-    // A remoção no Android não remove a cópia local preservada pelo OtherSide.
+    // Apagar no WhatsApp atualiza ou tira a notificação. A cópia local não sai;
+    // se este aviso ainda trouxer o texto, ele fica. "Mensagem apagada" não o substitui.
+    capture(sbn)
   }
 
   override fun onListenerDisconnected() {
@@ -82,17 +37,53 @@ class OtherSideNotificationCaptureService : NotificationListenerService() {
     OtherSideNotificationCaptureModule.requestRebind(this)
   }
 
-  private fun isSummary(title: String, message: String): Boolean {
-    val content = "$title $message".lowercase()
-    val summaryMarkers = listOf(
-      "new message",
-      "new messages",
-      "messages from",
-      "checking for new messages",
-      "nova mensagem",
-      "novas mensagens",
-      "mensagens de",
-    )
-    return summaryMarkers.any(content::contains)
+  private fun capture(sbn: StatusBarNotification) {
+    if (sbn.packageName !in ALLOWED_PACKAGES) return
+
+    try {
+      val extras = sbn.notification?.extras ?: return
+      val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+      val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+      val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
+      val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        ?.map { it.toString() }
+        .orEmpty()
+      val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString().orEmpty()
+      val notices = NotificationContent.parse(
+        postTime = sbn.postTime,
+        title = title,
+        text = text,
+        bigText = bigText,
+        lines = lines,
+        conversationTitle = conversationTitle,
+        messaging = NotificationContent.messagingLines(extras),
+      )
+      if (notices.isEmpty()) return
+
+      val incoming = notices.map { notice ->
+        IncomingCapture(
+          notification = CapturedNotification(
+            id = NotificationContent.idFor(sbn.packageName, sbn.key, notice),
+            conversation = notice.conversation,
+            sender = notice.sender,
+            message = notice.message,
+            receivedAt = notice.receivedAt,
+            packageName = sbn.packageName,
+            isDemo = false,
+            audioStatus = if (notice.singleFallback || AudioAttachmentDiagnostics.mentionsAudio(notice.message)) {
+              AudioAttachmentDiagnostics.inspect(this, extras, notice.message)
+            } else {
+              AudioAttachmentDiagnostics.NOT_APPLICABLE
+            },
+          ),
+          matchDeletionByTime = notice.matchDeletionByTime,
+        )
+      }
+      val saved = OtherSideNotificationStore.saveIncoming(applicationContext, incoming)
+      val module = OtherSideNotificationCaptureModule.getInstance() ?: return
+      saved.forEach(module::emitNotification)
+    } catch (error: Exception) {
+      Log.e(TAG, "Não foi possível processar a notificação", error)
+    }
   }
 }

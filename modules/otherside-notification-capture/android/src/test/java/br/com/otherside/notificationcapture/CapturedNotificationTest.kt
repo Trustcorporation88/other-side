@@ -26,4 +26,25 @@ class CapturedNotificationTest {
 
     assertEquals(original, restored)
   }
+
+  @Test
+  fun `mensagem apagada conserva o texto e a marca`() {
+    val original = CapturedNotification(
+      id = "id-2",
+      conversation = "Cliente",
+      sender = "Ana",
+      message = "texto original",
+      receivedAt = 456L,
+      packageName = "com.whatsapp.w4b",
+      isDemo = false,
+      deleted = true,
+      textPreserved = true,
+    )
+
+    val restored = CapturedNotification.fromJson(JSONObject(original.toJson().toString()))
+
+    assertEquals(original, restored)
+    assertEquals(true, restored.deleted)
+    assertEquals(true, restored.textPreserved)
+  }
 }

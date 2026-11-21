@@ -9,6 +9,10 @@ export type CapturedNotification = {
   packageName: string;
   isDemo: boolean;
   audioStatus: 'not_applicable' | 'not_provided' | 'not_accessible' | 'accessible';
+  /** A mensagem foi apagada no WhatsApp depois de chegar numa notificação. */
+  deleted?: boolean;
+  /** Falso quando o WhatsApp só entregou o aviso de mensagem apagada, sem o texto. */
+  textPreserved?: boolean;
 };
 
 export type PreservedAudio = {
